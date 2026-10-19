@@ -1,6 +1,6 @@
 ---
 name: reah-mcp
-description: Analyze Reah financial data for balance reviews, cashflow analysis, spending reviews, invoice follow-up, and treasury reporting.
+description: Analyze Reah financial data for balance reviews, cashflow analysis, card activity reviews, invoice follow-up, and treasury reporting.
 metadata:
   tools: reah_catalog,reah_describe_type,reah_query,reah_get_entity,reah_list_balances,reah_list_wallets,reah_list_banking_accounts,reah_list_transactions,reah_list_settled_movements,reah_list_contacts,reah_list_invoices,reah_list_approvals,reah_list_card_accounts,reah_list_card_transactions,reah_list_treasury_positions,reah_list_statements,reah_list_members,reah_list_assets,reah_search
 ---
@@ -17,7 +17,9 @@ Choose the data source for the business question:
 - For cashflow, burn, or period receipts, use settled movements. Transaction
   activity can include pending, failed, or internal activity and does not by
   itself establish settled cashflow.
-- For spending reviews, use card transactions and the relevant account context.
+- For card activity reviews, use card transactions and the relevant account
+  context. Draw monetary conclusions only from financial measures supplied by
+  the tools.
 - For invoice follow-up, distinguish outstanding obligations from actual cash
   received. For treasury reviews, distinguish position performance from current
   product yield using the measures documented by the tools.

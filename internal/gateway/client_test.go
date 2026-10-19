@@ -140,3 +140,22 @@ func TestConfig(t *testing.T) {
 		t.Fatal("accepted empty credential")
 	}
 }
+
+func TestGraphQLErrorsCannotEstablishTreasuryCompleteness(t *testing.T) {
+	u := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":{"entity":{"positions":[{"id":"position-1"}]}},"errors":[{"message":"partial upstream data","path":["entity","positions",0,"id"]}]}`)
+	}))
+	defer u.Close()
+	c, err := New(u.URL, "token", "entity-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := c.Query(context.Background(), `{entity(id:"entity-a"){positions:treausryPositionAccounts{id}}}`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coverage := result.ReadCoverage["/entity/positions"]
+	if coverage.Status != "not_proven" || coverage.SourceLimit != 200 || coverage.ReturnedItems == nil || *coverage.ReturnedItems != 1 || len(result.Errors) == 0 {
+		t.Fatalf("partial result claimed complete coverage: %#v", result)
+	}
+}

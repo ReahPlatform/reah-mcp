@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -33,30 +34,28 @@ func readPlan(t *testing.T, query string, vars map[string]any) *ReadPlan {
 func TestExactFinancialUnitsAndBusinessMeaning(t *testing.T) {
 	query := `query($id:ID!){e:entity(id:$id){
    totalBalance{usdAmount}
-   treausryPositionAccounts{currentValueInUSD currentAPY currentValueInAssets vault{apy underlyingInstrument{asset{symbol}}}}
+   treausryPositionAccounts{currentValueInUSD currentValueInAssets vault{apy underlyingInstrument{asset{symbol}}}}
    treausryPositionAccountSummary{averageAPY}
    invoices{invoices{amountSummary{currency amountDue amountDueUsd}}}
    analysisSettledMovements(settledFrom:"2026-10-01T00:00:00Z",settledTo:"2026-11-01T00:00:00Z"){movements{signedAmountSmallest instrumentDecimals assetSymbol usdValue{amountMinor currency scale}}}
   }
-  cardTransactions(entityId:$id){transactions{amountMinor currency}}
  }`
 	plan := readPlan(t, query, map[string]any{"id": "entity-a"})
 	raw := json.RawMessage(`{"e":{
   "totalBalance":{"usdAmount":"9007199254740993.123456789"},
-  "treausryPositionAccounts":[{"currentValueInUSD":"10000","currentAPY":"0.05","currentValueInAssets":"1.234567890123456789","vault":{"apy":"-0.0125","underlyingInstrument":{"asset":{"symbol":"ETH"}}}}],
+  "treausryPositionAccounts":[{"currentValueInUSD":"10000","currentValueInAssets":"1.234567890123456789","vault":{"apy":"-0.0125","underlyingInstrument":{"asset":{"symbol":"ETH"}}}}],
   "treausryPositionAccountSummary":{"averageAPY":"0.04"},
   "invoices":{"invoices":[{"amountSummary":{"currency":"EUR","amountDue":"100.00","amountDueUsd":"109.23"}},{"amountSummary":{"currency":"USD","amountDue":"0","amountDueUsd":""}}]},
   "analysisSettledMovements":{"movements":[{"signedAmountSmallest":"-1234567","instrumentDecimals":6,"assetSymbol":"USDC","usdValue":{"amountMinor":"-123","currency":"USD","scale":2}},{"signedAmountSmallest":"1","instrumentDecimals":18,"assetSymbol":"ETH","usdValue":null}]}
- },"cardTransactions":{"transactions":[{"amountMinor":"12345","currency":"USD"}]}}`)
+ }}`)
 	before := string(raw)
-	values, err := plan.Normalize(raw)
+	values, _, err := plan.Normalize(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for path, want := range map[string]string{
 		"/e/totalBalance/usdAmount":                                    "90071992547409.93123456789",
 		"/e/treausryPositionAccounts/0/currentValueInUSD":              "100",
-		"/e/treausryPositionAccounts/0/currentAPY":                     "0.05",
 		"/e/treausryPositionAccounts/0/currentValueInAssets":           "1.234567890123456789",
 		"/e/treausryPositionAccounts/0/vault/apy":                      "-0.0125",
 		"/e/treausryPositionAccountSummary/averageAPY":                 "0.04",
@@ -65,14 +64,13 @@ func TestExactFinancialUnitsAndBusinessMeaning(t *testing.T) {
 		"/e/analysisSettledMovements/movements/0/signedAmountSmallest": "-1.234567",
 		"/e/analysisSettledMovements/movements/0/usdValue/amountMinor": "-1.23",
 		"/e/analysisSettledMovements/movements/1/signedAmountSmallest": "0.000000000000000001",
-		"/cardTransactions/transactions/0/amountMinor":                 "123.45",
 	} {
 		v, ok := values[path]
 		if !ok || v.Amount == nil || *v.Amount != want {
 			t.Errorf("%s = %#v; want %s", path, v, want)
 		}
 	}
-	for path, want := range map[string]string{"/e/treausryPositionAccounts/0/currentAPY": "5", "/e/treausryPositionAccounts/0/vault/apy": "-1.25", "/e/treausryPositionAccountSummary/averageAPY": "4"} {
+	for path, want := range map[string]string{"/e/treausryPositionAccounts/0/vault/apy": "-1.25", "/e/treausryPositionAccountSummary/averageAPY": "4"} {
 		v := values[path]
 		if v.Percent == nil || *v.Percent != want {
 			t.Errorf("%s percent = %#v", path, v)
@@ -93,11 +91,6 @@ func TestExactFinancialUnitsAndBusinessMeaning(t *testing.T) {
 	if values["/e/invoices/invoices/0/amountSummary/amountDue"].Currency != "EUR" {
 		t.Fatal("lost invoice currency")
 	}
-	for _, field := range plan.Metadata {
-		if field.SourceField == "TreasuryPositionAccount.currentAPY" && !strings.Contains(field.Description, "Utilized APY") {
-			t.Fatal("lost utilized APY meaning")
-		}
-	}
 }
 
 func TestAliasesFragmentsMergedFieldsAndDirectives(t *testing.T) {
@@ -107,7 +100,7 @@ func TestAliasesFragmentsMergedFieldsAndDirectives(t *testing.T) {
   }
   totalBalance{keep:usdAmount skipped:usdAmount @include(if:$yes)}
  }} fragment Money on SettledMovementMoney{value:amountMinor}`, map[string]any{"yes": false})
-	values, err := plan.Normalize(json.RawMessage(`{"company":{"analysisSettledMovements":{"rows":[{"v":{"value":"12345","places":3,"code":"USD"}}]},"totalBalance":{"keep":"10000"}}}`))
+	values, _, err := plan.Normalize(json.RawMessage(`{"company":{"analysisSettledMovements":{"rows":[{"v":{"value":"12345","places":3,"code":"USD"}}]},"totalBalance":{"keep":"10000"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +116,7 @@ func TestAliasesFragmentsMergedFieldsAndDirectives(t *testing.T) {
 
 func TestNativeBalanceIsAlreadyInMajorAssetUnits(t *testing.T) {
 	plan := readPlan(t, `{entity(id:"entity-a"){instrumentBalances{balances{n:nativeAmount a:aggregation{kind:__typename ... on Asset{ticker:symbol} ... on Instrument{asset{ticker:symbol}}}}}}}`, nil)
-	values, err := plan.Normalize(json.RawMessage(`{"entity":{"instrumentBalances":{"balances":[{"n":"1.234567890123456789","a":{"kind":"Instrument","asset":{"ticker":"ETH"}}},{"n":"2.5","a":{"kind":"Asset","ticker":"BTC"}},{"n":null,"a":{"kind":"Total"}}]}}}`))
+	values, _, err := plan.Normalize(json.RawMessage(`{"entity":{"instrumentBalances":{"balances":[{"n":"1.234567890123456789","a":{"kind":"Instrument","asset":{"ticker":"ETH"}}},{"n":"2.5","a":{"kind":"Asset","ticker":"BTC"}},{"n":null,"a":{"kind":"Total"}}]}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +137,8 @@ func TestUnitCompanionsCannotBeOmittedOrSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, query := range []string{
-		`{cardTransactions(entityId:"entity-a"){transactions{amountMinor}}}`,
-		`{cardTransactions(entityId:"entity-a"){transactions{amountMinor currency @skip(if:true)}}}`,
+		`{entity(id:"entity-a"){analysisSettledMovements(settledFrom:"2026-10-01T00:00:00Z",settledTo:"2026-11-01T00:00:00Z"){movements{usdValue{amountMinor scale}}}}}`,
+		`{entity(id:"entity-a"){analysisSettledMovements(settledFrom:"2026-10-01T00:00:00Z",settledTo:"2026-11-01T00:00:00Z"){movements{usdValue{amountMinor scale currency @skip(if:true)}}}}}`,
 		`{entity(id:"entity-a"){instrumentBalances{balances{nativeAmount}}}}`,
 		`{entity(id:"entity-a"){treausryPositionAccounts{currentValueInAssets}}}`,
 		`{entity(id:"entity-a"){invoices{invoices{amountSummary{amountDue}}}}}`,
@@ -161,31 +154,33 @@ func TestUnitCompanionsCannotBeOmittedOrSkipped(t *testing.T) {
 }
 
 func TestUpstreamDriftIsNotPublished(t *testing.T) {
-	plan := readPlan(t, `{cardTransactions(entityId:"entity-a"){transactions{amountMinor currency}}}`, nil)
-	for _, data := range []string{
-		`{"cardTransactions":{"transactions":[{"amountMinor":"123","currency":"EUR"}]}}`,
-		`{"cardTransactions":{"transactions":[{"amountMinor":"123","currency":null}]}}`,
-		`{"cardTransactions":{"transactions":[{"amountMinor":123,"currency":"USD"}]}}`,
-		`{"cardTransactions":{"transactions":[{"amountMinor":"1.23","currency":"USD"}]}}`,
-		`{"cardTransactions":{"transactions":[{"amountMinor":"NaN","currency":"USD"}]}}`,
-		`{"cardTransactions":{"transactions":[{"amountMinor":"123","currency":"USD","secretAmount":"999"}]}}`,
+	plan := readPlan(t, `{entity(id:"entity-a"){analysisSettledMovements(settledFrom:"2026-10-01T00:00:00Z",settledTo:"2026-11-01T00:00:00Z"){movements{usdValue{amountMinor currency scale}}}}}`, nil)
+	for _, money := range []string{
+		`{"amountMinor":"123","currency":null,"scale":2}`,
+		`{"amountMinor":123,"currency":"USD","scale":2}`,
+		`{"amountMinor":"1.23","currency":"USD","scale":2}`,
+		`{"amountMinor":"NaN","currency":"USD","scale":2}`,
+		`{"amountMinor":"123","currency":"USD","scale":null}`,
+		`{"amountMinor":"123","currency":"USD","scale":-1}`,
+		`{"amountMinor":"123","currency":"USD","scale":2,"secretAmount":"999"}`,
 	} {
-		if _, err := plan.Normalize(json.RawMessage(data)); err == nil {
+		data := `{"entity":{"analysisSettledMovements":{"movements":[{"usdValue":` + money + `}]}}}`
+		if _, _, err := plan.Normalize(json.RawMessage(data)); err == nil {
 			t.Errorf("published uninterpretable upstream data: %s", data)
 		}
 	}
 	plan = readPlan(t, `{entity(id:"entity-a"){id state}}`, nil)
 	for _, data := range []string{`{"entity":{"id":{"unreviewed":"data"}}}`, `{"entity":{"state":"FUTURE_STATE"}}`} {
-		if _, err := plan.Normalize(json.RawMessage(data)); err == nil {
+		if _, _, err := plan.Normalize(json.RawMessage(data)); err == nil {
 			t.Errorf("published unreviewed shape: %s", data)
 		}
 	}
 	plan = readPlan(t, `{entity(id:"entity-a"){id @skip(if:true)}}`, nil)
-	if _, err := plan.Normalize(json.RawMessage(`{"entity":{"unreviewedAmount":"999"}}`)); err == nil {
+	if _, _, err := plan.Normalize(json.RawMessage(`{"entity":{"unreviewedAmount":"999"}}`)); err == nil {
 		t.Fatal("object with no active selections leaked an unreviewed field")
 	}
 	plan = readPlan(t, `{entity(id:"entity-a"){__typename}}`, nil)
-	if _, err := plan.Normalize(json.RawMessage(`{"entity":{"__typename":"Vault"}}`)); err == nil {
+	if _, _, err := plan.Normalize(json.RawMessage(`{"entity":{"__typename":"Vault"}}`)); err == nil {
 		t.Fatal("inconsistent concrete type was published")
 	}
 }
@@ -195,7 +190,7 @@ func TestUnreviewedFieldsAreAbsentFromPublicSchemaAndDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pair := range [][2]string{{"Vault", "tvlUsd"}, {"TreasuryPositionAccount", "sharePrice"}, {"Card", "cardDetail"}, {"Entity", "transactionStats"}, {"Asset", "latestPrice"}} {
+	for _, pair := range [][2]string{{"Vault", "tvlUsd"}, {"TreasuryPositionAccount", "sharePrice"}, {"Card", "cardDetail"}, {"Entity", "transactionStats"}, {"Asset", "latestPrice"}, {"CardTransaction", "amountMinor"}, {"TreasuryPositionAccount", "currentAPY"}, {"AssetConnection", "cursor"}} {
 		if s.Types[pair[0]].Fields.ForName(pair[1]) != nil {
 			t.Errorf("unreviewed field is public: %v", pair)
 		}
@@ -210,7 +205,7 @@ func TestUnreviewedFieldsAreAbsentFromPublicSchemaAndDiscovery(t *testing.T) {
 	if s.Types["AssetPrice"] != nil {
 		t.Fatal("unreviewed type is packaged")
 	}
-	for _, query := range []string{`{entity(id:"entity-a"){treausryPositionAccounts{sharePrice}}}`, `{entity(id:"entity-a"){assets{assets{latestPrice{usdPrice}}}}}`} {
+	for _, query := range []string{`{entity(id:"entity-a"){treausryPositionAccounts{sharePrice}}}`, `{entity(id:"entity-a"){assets{assets{latestPrice{usdPrice}}}}}`, `{cardTransactions(entityId:"entity-a"){transactions{amountMinor currency}}}`, `{entity(id:"entity-a"){treausryPositionAccounts{currentAPY}}}`, `{entity(id:"entity-a"){assets(first:1){assets{id}}}}`, `{entity(id:"entity-a"){assets(after:"cursor"){assets{id}}}}`} {
 		if _, errs := gqlparser.LoadQuery(s, query); len(errs) == 0 {
 			t.Errorf("query accepted removed field: %s", query)
 		}
@@ -247,6 +242,70 @@ func TestExactDecimalShift(t *testing.T) {
 	for _, raw := range []string{"NaN", "Infinity", "1e3", "", " 100 ", "1,000", "--1", ".5"} {
 		if _, err := shiftDecimal(raw, 2); err == nil {
 			t.Errorf("accepted malformed decimal %q", raw)
+		}
+	}
+}
+
+func TestTreasurySourceCoverageWithAliasesAndFragments(t *testing.T) {
+	plan := readPlan(t, `query($include:Boolean!){company:entity(id:"entity-a"){
+  ...Positions
+  totals:treausryPositionAccountSummary{value:currentValueInUSD}
+  skipped:treausryPositionAccounts @skip(if:$include){id}
+ }} fragment Positions on Entity{positions:treausryPositionAccounts{id}}`, map[string]any{"include": true})
+	for _, count := range []int{0, 1, 199, 200, 201} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			positions := make([]map[string]string, count)
+			for i := range positions {
+				positions[i] = map[string]string{"id": fmt.Sprintf("position-%d", i)}
+			}
+			raw, err := json.Marshal(map[string]any{"company": map[string]any{
+				"positions": positions, "totals": map[string]string{"value": "2000000"},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			values, coverage, err := plan.Normalize(raw)
+			if count > 200 {
+				if err == nil {
+					t.Fatal("published data beyond the reviewed source limit")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "complete"
+			if count == 200 {
+				want = "not_proven"
+			}
+			list := coverage["/company/positions"]
+			if list.Status != want || list.SourceLimit != 200 || list.ReturnedItems == nil || *list.ReturnedItems != count || list.Reason == "" {
+				t.Fatalf("incorrect list coverage: %#v", list)
+			}
+			summary := coverage["/company/totals"]
+			if summary.Status != "not_proven" || summary.SourceLimit != 200 || summary.ReturnedItems != nil || len(coverage) != 2 {
+				t.Fatalf("summary or skipped coverage was invented: %#v", coverage)
+			}
+			if v := values["/company/totals/value"]; v.Amount == nil || *v.Amount != "20000" {
+				t.Fatalf("coverage changed the raw aggregate conversion: %#v", v)
+			}
+		})
+	}
+	for _, raw := range []string{
+		`{"company":{"positions":null,"totals":null}}`,
+		`{"company":{"positions":[null],"totals":null}}`,
+	} {
+		_, coverage, err := plan.Normalize(json.RawMessage(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if coverage["/company/positions"].Status == "complete" || coverage["/company/totals"].Status != "unavailable" {
+			t.Fatalf("null data was treated as complete: %#v", coverage)
+		}
+	}
+	for _, f := range plan.Metadata {
+		if (f.SourceField == "Entity.treausryPositionAccounts" || f.SourceField == "Entity.treausryPositionAccountSummary") && f.SourceLimit != 200 {
+			t.Fatalf("source limit missing from field semantics: %#v", f)
 		}
 	}
 }

@@ -19,9 +19,17 @@ type FieldContract struct {
 	Requires      map[string]string `json:"requires,omitempty"`
 	Evidence      string            `json:"evidence"`
 	Arguments     map[string]string `json:"arguments,omitempty"`
+	SourceLimit   int               `json:"source_limit,omitempty"`
 }
 
 var PublicFields = ContractsFromSource(SourceSemantics)
+
+// PublicTypeDescriptions correct upstream type-level documentation where the
+// reviewed resolver behavior differs from the broader upstream schema.
+var PublicTypeDescriptions = map[string]string{
+	"AssetConnection":                "Full entity asset catalog. No pagination parameters or cursor are exposed.",
+	"TreasuryPositionAccountSummary": "Aggregate of at most the latest 200 matching Treasury positions. Not a proven full portfolio total; inspect the enclosing field's read_coverage.",
+}
 
 // ContractsFromSource combines an explicit field allowlist with pinned unit
 // evidence. New upstream registry entries are never admitted automatically.
@@ -56,7 +64,7 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 				"fileName":      "Name of an existing statement export file; does not provide download access.",
 				"rowCount":      "Number of rows reported by the export task; not a monetary value.",
 				"transactionId": "Stable identifier of the card transaction.", "merchantName": "Merchant display name reported for the card transaction.",
-				"transactionType": "Card transaction category; use together with uiStatus and preserve the raw sign.",
+				"transactionType": "Card activity category; use together with uiStatus. Funding events and merchant spending are distinct.",
 				"uiStatus":        "Card transaction display lifecycle status; pending activity is not settled cashflow.",
 			}[field]
 			add(parent, field, description)
@@ -79,9 +87,9 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 			"contacts":                 "Paginated contact roster.", "invoices": "Paginated invoice records. An invoice is not proof of received funds.",
 			"approvalRecords":                "Paginated approval records. Approval status is distinct from transaction settlement.",
 			"cardAccounts":                   "Card account roster; each nested cards connection has independent pagination.",
-			"treausryPositionAccounts":       "Treasury positions. USD values are valuations, not immediately spendable cash; positions and account totals may overlap.",
-			"treausryPositionAccountSummary": "Treasury portfolio summary. Do not add to its underlying position values.",
-			"userMemberships":                "Paginated memberships of this entity.", "assets": "Paginated asset catalog.",
+			"treausryPositionAccounts":       "At most the latest 200 matching Treasury positions, ordered by created_at DESC, id DESC. No continuation is available. A full batch cannot establish complete holdings; check read_coverage. USD valuations are not spendable cash and may overlap account totals.",
+			"treausryPositionAccountSummary": "Aggregate of at most the latest 200 matching Treasury positions, not a guaranteed full portfolio total. No continuation or contributing count is available; read_coverage reports completeness as not_proven. Do not add to underlying position values.",
+			"userMemberships":                "Paginated memberships of this entity.", "assets": "Full entity asset catalog. The upstream resolver does not implement pagination; no first, after or cursor is exposed.",
 		},
 		"Balance": {
 			"aggregation":  "Aggregation identity for this balance. Asset, instrument, network and total views may overlap.",
@@ -126,7 +134,7 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 			"excludedSpamMovementCount": "Count of spam movements excluded by the query.",
 		},
 		"Card":            {"limitFrequency": "Period over which limitAmountMinor applies; not a percentage or amount."},
-		"CardTransaction": {"currency": "Currency code of amountMinor. This MCP contract admits USD card amounts only."},
+		"CardTransaction": {"currency": "Currency label reported for card activity, including USD or USDC. No transaction amount is exposed because the upstream field mixes sources without an explicit scale."},
 	} {
 		for field, description := range fields {
 			add(parent, field, description)
@@ -135,10 +143,23 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 	for parent, item := range map[string]string{
 		"BalanceConnection": "balances", "TransactionConnection": "transactions", "ContactConnection": "contacts", "InvoiceConnection": "invoices",
 		"ApprovalRecordConnection": "records", "CardConnection": "cards", "CardTransactionConnection": "transactions", "StatementExportConnection": "tasks",
-		"EntityMembershipConnection": "memberships", "AssetConnection": "assets",
+		"EntityMembershipConnection": "memberships",
 	} {
 		add(parent, item, "Records in this page only. Fetch subsequent pages before claiming complete coverage.")
 		add(parent, "cursor", "Opaque next-page cursor. Pass as after with unchanged filters; null or empty indicates no next page.")
+	}
+	add("AssetConnection", "assets", "Full entity asset catalog returned by the upstream service; not a paginated connection.")
+	for _, field := range []string{"treausryPositionAccounts", "treausryPositionAccountSummary"} {
+		key := "Entity." + field
+		contract := result[key]
+		contract.SourceLimit = 200
+		contract.Evidence = "reah-graphql-gateway:9b2e65e0d4a6c92d99e02965b322dcd9bf279d94:internal/graph/resolver/entity_treasury_helpers.go#listTreasuryPositionAccounts;internal/graph/resolver/entity.resolvers.go#TreausryPositionAccountSummary;reah-ledger:c62e0e1124bdef649a3a4b28bbeba082c27bf93c:internal/repos/treasury_position_accounts/query.sql#ListTreasuryPositionsByEntity"
+		result[key] = contract
+	}
+	for _, key := range []string{"Entity.assets", "AssetConnection.assets"} {
+		contract := result[key]
+		contract.Evidence = "reah-graphql-gateway:9b2e65e0d4a6c92d99e02965b322dcd9bf279d94:internal/graph/resolver/entity.resolvers.go#Assets"
+		result[key] = contract
 	}
 	add("AnalysisSettledMovementConnection", "nextPageToken", "Opaque next-page cursor. Pass as after with the original time window and filters; null or empty indicates no next page.")
 	add("Total", "_empty", "Structural placeholder for the total aggregation; carries no monetary value.")
@@ -161,7 +182,7 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 		panic(err)
 	}
 	for _, key := range []string{
-		"TreasuryPositionAccount.currentAPY", "TreasuryPositionAccount.currentValueInUSD", "TreasuryPositionAccount.investedInUSD", "TreasuryPositionAccount.unrealizedProfitInUSD",
+		"TreasuryPositionAccount.currentValueInUSD", "TreasuryPositionAccount.investedInUSD", "TreasuryPositionAccount.unrealizedProfitInUSD",
 		"TreasuryPositionAccountSummary.averageAPY", "TreasuryPositionAccountSummary.currentValueInUSD", "TreasuryPositionAccountSummary.investedInUSD", "TreasuryPositionAccountSummary.totalEarnedInUSD", "TreasuryPositionAccountSummary.unrealizedProfitInUSD", "Vault.apy",
 	} {
 		source, ok := upstream[key]
@@ -189,7 +210,6 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 	money("Balance.nativeAmount", "Major asset units already scaled for display (1.5 means 1.5 tokens). Null for aggregations without a native amount. Do not divide by instrument decimals again or add different assets.", FieldContract{Unit: "asset_units", Scale: scale(0), CurrencyField: "aggregation", Evidence: "reah-ledger:f4fa1d1d73502ed4fc4e5923f297dfb727d06663:internal/convert/balances.go#BalanceToProto"})
 	money("TreasuryPositionAccount.currentValueInAssets", "Current position value in major underlying asset units. Do not divide by instrument decimals again or add different assets.", FieldContract{Unit: "asset_units", Scale: scale(0), CurrencyField: "vault.underlyingInstrument.asset.symbol", Requires: map[string]string{"vault.underlyingInstrument.asset.symbol": "String"}, Evidence: "reah-ledger:f4fa1d1d73502ed4fc4e5923f297dfb727d06663:internal/svc/treasury_apis.go#toProtoTreasuryPosition"})
 	money("Card.limitAmountMinor", "USD spending limit in integer cents, applied over limitFrequency. Not current balance or available cash.", FieldContract{Unit: "usd_minor_units", Scale: scale(2), Currency: "USD", Integer: true, Evidence: "reah-web:a06d0d5741f1abb2f6a6ca6bb58a070ce02ac7ca:apps/dashboard/src/pages/cards/utils/card-maps.ts#minorToDollars"})
-	money("CardTransaction.amountMinor", "Signed USD card activity amount in integer cents. Preserve transactionType and uiStatus; the raw sign alone does not establish cashflow classification.", FieldContract{Unit: "currency_minor_units", Scale: scale(2), CurrencyField: "currency", Requires: map[string]string{"currency": "String"}, Integer: true, Evidence: "reah-web:a06d0d5741f1abb2f6a6ca6bb58a070ce02ac7ca:apps/dashboard/src/pages/cards/utils/card-maps.ts#formatMinorAmount"})
 	money("SettledMovement.signedAmountSmallest", "Signed integer balance change in the instrument's smallest unit. Positive increases and negative decreases this account's instrument balance; this is not by itself an external cashflow classification.", FieldContract{Unit: "instrument_smallest_units", ScaleField: "instrumentDecimals", CurrencyField: "assetSymbol", Integer: true, Requires: map[string]string{"instrumentDecimals": "Int", "assetSymbol": "String"}})
 	money("SettledMovementMoney.amountMinor", "Posting-date valuation in integer minor units of currency. Use the explicit scale; null parent valuation means unavailable, not zero.", FieldContract{Unit: "currency_minor_units", ScaleField: "scale", CurrencyField: "currency", Integer: true, Requires: map[string]string{"scale": "Int", "currency": "String"}})
 	money("InvoiceAmountSummary.amountDue", "Final invoice amount in major units of currency. For mixed-currency invoices this is the primary-currency total, not each line's currency. Not evidence of payment.", FieldContract{Unit: "currency_units", Scale: scale(0), CurrencyField: "currency", Requires: map[string]string{"currency": "String"}})
@@ -209,7 +229,7 @@ func ContractsFromSource(sourceJSON []byte) map[string]FieldContract {
 	}
 	argument("Query.invoice", map[string]string{"entityId": "Entity ID; must match the configured entity.", "invoiceId": "Stable invoice API identifier."})
 	argument("Query.globalSearch", map[string]string{"entityId": "Entity ID; supplied by the server.", "query": "Search text. Matches are not a complete financial population.", "limit": "Maximum returned matches, from 1 to 200."})
-	for _, key := range []string{"Entity.instrumentBalances", "Entity.transactions", "Entity.contacts", "Entity.invoices", "Entity.approvalRecords", "Entity.assets", "Entity.userMemberships", "CardAccount.cards"} {
+	for _, key := range []string{"Entity.instrumentBalances", "Entity.transactions", "Entity.contacts", "Entity.invoices", "Entity.approvalRecords", "Entity.userMemberships", "CardAccount.cards"} {
 		argument(key, map[string]string{"first": "Page size from 1 to 200; defaults to 100 in business tools.", "after": "Opaque next-page cursor; retain the original filters and window."})
 	}
 	argument("Entity.analysisSettledMovements", map[string]string{

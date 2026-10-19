@@ -34,6 +34,7 @@ type Response struct {
 	Errors           json.RawMessage                       `json:"errors,omitempty"`
 	FieldSemantics   []readschema.SelectedField            `json:"field_semantics"`
 	NormalizedValues map[string]readschema.NormalizedValue `json:"normalized_values"`
+	ReadCoverage     map[string]readschema.ReadCoverage    `json:"read_coverage"`
 }
 
 func New(endpoint, token, entityID string) (*Client, error) {
@@ -209,11 +210,21 @@ func (c *Client) Query(ctx context.Context, query string, variables map[string]a
 	if len(result.Data) == 0 && len(result.Errors) == 0 {
 		return nil, errors.New("GraphQL response contains neither data nor errors")
 	}
-	values, err := plan.Normalize(result.Data)
+	values, coverage, err := plan.Normalize(result.Data)
 	if err != nil {
 		return nil, err
 	}
 	result.FieldSemantics = plan.Metadata
 	result.NormalizedValues = values
+	result.ReadCoverage = coverage
+	if len(result.Errors) > 0 && string(result.Errors) != "null" && string(result.Errors) != "[]" {
+		for path, c := range result.ReadCoverage {
+			if c.Status == "complete" {
+				c.Status = "not_proven"
+				c.Reason = "GraphQL returned errors; complete acquisition is not established."
+				result.ReadCoverage[path] = c
+			}
+		}
+	}
 	return &result, nil
 }

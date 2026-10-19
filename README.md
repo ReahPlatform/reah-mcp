@@ -1,7 +1,7 @@
 # Reah MCP
 
 Give AI assistants read-only access to Reah financial data: balances, accounts,
-transactions, settled cashflow, card spending, invoices, and treasury positions.
+transactions, settled cashflow, card activity, invoices, and treasury positions.
 The service validates queries locally and uses the upstream identity's Reah
 permissions to access data.
 
@@ -94,12 +94,12 @@ instances. The HTTP token is not an OAuth access token.
 | `reah_list_transactions` / `reah_list_settled_movements` | Transaction lifecycle and settled cashflow coverage |
 | `reah_list_contacts` / `reah_list_invoices` | Contacts and invoices |
 | `reah_list_approvals` / `reah_list_members` | Approval records and entity members |
-| `reah_list_card_accounts` / `reah_list_card_transactions` | Card accounts, masked cards, and card transactions |
-| `reah_list_treasury_positions` / `reah_list_statements` | Treasury positions and existing statement jobs |
-| `reah_list_assets` / `reah_search` | Asset catalog and financial object search |
+| `reah_list_card_accounts` / `reah_list_card_transactions` | Card accounts, masked cards, and card activity metadata; transaction amounts are not exposed |
+| `reah_list_treasury_positions` / `reah_list_statements` | Latest 200 matching Treasury positions with coverage metadata, and existing statement jobs |
+| `reah_list_assets` / `reah_search` | Full entity asset catalog without pagination, and financial object search |
 | `reah_query` | Custom GraphQL queries within the allowed read schema |
 
-List tools accept reviewed GraphQL `arguments` and optional `fields` for
+Business tools accept surface-specific GraphQL `arguments` and optional `fields` for
 result selections. `reah_describe_type` lists the public arguments and their
 defaults; upstream fields and filters outside this contract are not exposed:
 
@@ -118,6 +118,10 @@ connections generally return `cursor`. Each card account has a separate nested
 `cards.cursor`; select subsequent pages through `fields`, for example
 `cards(first:100, after:"...")`. A call does not automatically retrieve every
 page. Search matches do not establish a complete financial dataset.
+The asset catalog returns the full collection; `first`, `after`, and `cursor`
+are not exposed for assets. Treasury positions and their summary have a fixed
+upstream limit of 200 matching positions and no continuation. Read `read_coverage`
+before claiming a complete portfolio; following cursors cannot bypass that limit.
 
 For custom queries, declare and use `$entityId: ID!`. The server supplies the
 configured entity ID:
@@ -141,7 +145,8 @@ to inspect `Query`, `Entity`, or a result type before selecting additional field
   prices, quotes, financial breakdowns, and other unreviewed upstream fields
   are absent from both the packaged schema and discovery results.
 - Every read returns raw GraphQL `data` / `errors`, `field_semantics` for its
-  selections, and exact `normalized_values` keyed by JSON Pointer. Raw decimal
+  selections, exact `normalized_values`, and `read_coverage` for source-bounded
+  fields, keyed by JSON Pointer. Raw decimal
   strings, cursors, coverage, and exclusion counts stay intact. Use normalized
   `amount` and `currency` for display/calculation; never apply a second unit
   conversion. `source_scale` describes the conversion from the raw value.
@@ -151,14 +156,25 @@ to inspect `Query`, `Entity`, or a result type before selecting additional field
   explicit `instrumentDecimals` or `scale`. Conversions use decimal strings,
   without floating-point rounding, and preserve negative amounts.
 - APYs are decimal fractions: `0.05` means 5%. Normalized `percent` is already
-  multiplied by 100. Position `currentAPY` is Utilized APY, `Vault.apy` is the
-  current product APY, and summary `averageAPY` is a position-weighted average
-  of product APYs. These measures are not interchangeable.
+  multiplied by 100. `Vault.apy` is current product APY, and summary `averageAPY`
+  is a position-weighted average of product APYs within the bounded summary.
+  Position `currentAPY` is absent: upstream XIRR calculations conflate missing,
+  unsolved, and nonpositive returns as zero, so availability cannot be established.
+- `CardTransaction.amountMinor` is absent from the public schema and discovery.
+  The upstream list mixes USD card spending and USDC funding amounts without
+  an explicit scale. Activity metadata and its pagination remain available;
+  these records alone cannot establish monetary spending totals.
+- Treasury lists cover at most the latest 200 matching positions, ordered by
+  creation time and ID descending. `read_coverage` marks a full batch as
+  `not_proven`; summaries alone always have `not_proven` completeness because
+  upstream provides neither a contributing count nor continuation. A successful
+  read does not imply a complete portfolio total.
 - Custom selections must include the currency, scale, or underlying-asset
   companions documented by their contracts. Aliases, fragments, and conditional
-  selections are supported. Unrecognized upstream shapes, units, enum values,
-  or unsupported card currencies fail the read instead of publishing ambiguous
-  values. The current card amount contract is USD with two decimal places.
+  selections are supported. Unrecognized upstream shapes, units, or enum values
+  fail the read instead of publishing ambiguous values. Masked-card spending
+  limits use integer USD cents; card transaction
+  amounts are not part of this contract.
 - Null and legacy unavailable invoice valuations never become zero. Partial
   GraphQL errors set MCP `isError: true` while preserving interpretable data.
   See the [data contract](docs/data-contract.md) for examples and source evidence.
@@ -193,6 +209,8 @@ make build
 Checks cover all business tools, MCP and HTTP authentication, the public field
 allowlist, unit contracts, exact high-precision conversions, aliases/fragments,
 nulls, partial errors, entity scope, pagination, response limits, and redirects.
+Regression checks also cover mixed USD/USDC card metadata, removal of ambiguous
+fields and asset pagination, and Treasury source limits and partial-result coverage.
 Tests use a local mock GraphQL service; live
 integration testing requires environment-specific credentials.
 

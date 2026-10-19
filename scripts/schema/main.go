@@ -103,6 +103,9 @@ func run(repo string) error {
 		if d.Description == "" {
 			d.Description = commentText(d.AfterDescriptionComment)
 		}
+		if description, ok := readschema.PublicTypeDescriptions[name]; ok {
+			d.Description = description
+		}
 		d.Directives = nil
 		var fields ast.FieldList
 		for _, f := range d.Fields {

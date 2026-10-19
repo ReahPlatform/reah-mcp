@@ -29,6 +29,15 @@ type NormalizedValue struct {
 	Status   string  `json:"status"`
 }
 
+// ReadCoverage describes acquisition of a source-bounded collection or aggregate,
+// independently of monetary normalization and external ingestion coverage.
+type ReadCoverage struct {
+	Status        string `json:"status"`
+	SourceLimit   int    `json:"source_limit"`
+	ReturnedItems *int   `json:"returned_items,omitempty"`
+	Reason        string `json:"reason"`
+}
+
 type readField struct {
 	field    *ast.Field
 	children []*readField
@@ -221,15 +230,20 @@ func sourceValue(object map[string]json.RawMessage, fields []*readField, path st
 
 // Normalize never changes raw data. Unexpected fields, enum values, numeric
 // encodings or missing unit dependencies fail the whole read before publication.
-func (p *ReadPlan) Normalize(data json.RawMessage) (map[string]NormalizedValue, error) {
+func (p *ReadPlan) Normalize(data json.RawMessage) (map[string]NormalizedValue, map[string]ReadCoverage, error) {
 	values := map[string]NormalizedValue{}
+	coverage := map[string]ReadCoverage{}
 	if len(data) == 0 || string(data) == "null" {
-		return values, nil
+		return values, coverage, nil
 	}
 	var object func(json.RawMessage, []*readField, string, string) error
 	var value func(json.RawMessage, *readField, string, *ast.Type) error
 	value = func(raw json.RawMessage, node *readField, path string, typ *ast.Type) error {
+		bounded := node.contract.SourceLimit > 0 && typ == node.field.Definition.Type
 		if string(raw) == "null" {
+			if bounded {
+				coverage[path] = ReadCoverage{Status: "unavailable", SourceLimit: node.contract.SourceLimit, Reason: "The bounded source returned null; no completeness claim is possible."}
+			}
 			if node.contract.Unit != "" {
 				values[path] = NormalizedValue{Raw: nil, Unit: deliveredUnit(node.contract.Unit), Status: "null", Currency: node.contract.Currency, Scale: node.contract.Scale}
 			}
@@ -240,12 +254,34 @@ func (p *ReadPlan) Normalize(data json.RawMessage) (map[string]NormalizedValue, 
 			if err := json.Unmarshal(raw, &items); err != nil {
 				return fmt.Errorf("invalid list at %s", path)
 			}
+			if limit := node.contract.SourceLimit; bounded {
+				if len(items) > limit {
+					return fmt.Errorf("upstream exceeded the reviewed source limit at %s", path)
+				}
+				count := len(items)
+				c := ReadCoverage{Status: "complete", SourceLimit: limit, ReturnedItems: &count, Reason: "All matching upstream positions fit below the fixed limit; this does not establish external ingestion coverage or spendability."}
+				if count == limit {
+					c.Status = "not_proven"
+					c.Reason = "The source limit was reached; older matching positions may be omitted and no continuation is available."
+				}
+				for _, item := range items {
+					if string(item) == "null" {
+						c.Status = "not_proven"
+						c.Reason = "The source returned an unavailable position; complete position data is not established."
+						break
+					}
+				}
+				coverage[path] = c
+			}
 			for i, item := range items {
 				if err := value(item, node, path+"/"+strconv.Itoa(i), typ.Elem); err != nil {
 					return err
 				}
 			}
 			return nil
+		}
+		if bounded {
+			coverage[path] = ReadCoverage{Status: "not_proven", SourceLimit: node.contract.SourceLimit, Reason: "This aggregate covers at most the latest matching positions up to the source limit; the contributing count and continuation are unavailable. It is not a proven full portfolio total."}
 		}
 		definition := p.schema.Types[typ.Name()]
 		if definition != nil && (definition.Kind == ast.Object || definition.IsAbstractType()) {
@@ -340,9 +376,9 @@ func (p *ReadPlan) Normalize(data json.RawMessage) (map[string]NormalizedValue, 
 		return nil
 	}
 	if err := object(data, p.fields, "", p.schema.Query.Name); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return values, nil
+	return values, coverage, nil
 }
 
 func deliveredUnit(unit string) string {
@@ -404,9 +440,6 @@ func normalizeValue(raw json.RawMessage, c FieldContract, obj map[string]json.Ra
 		currency, ok := sourceValue(obj, fields, currencyPath)
 		if !ok || json.Unmarshal(currency, &n.Currency) != nil || strings.TrimSpace(n.Currency) == "" {
 			return n, fmt.Errorf("missing or invalid %s", currencyPath)
-		}
-		if c.Unit == "currency_minor_units" && c.ScaleField == "" && n.Currency != "USD" {
-			return n, fmt.Errorf("card currency is outside the reviewed USD contract")
 		}
 	}
 	if c.Integer && (!integerPattern.MatchString(text)) {

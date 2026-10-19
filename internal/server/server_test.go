@@ -41,11 +41,11 @@ func fixture(t *testing.T) (*mcp.Server, *atomic.Int32) {
 			"invoices":                 `{"entity":{"invoices":{"invoices":[{"id":"invoice-1","status":"SENT"}],"cursor":"next"}}}`,
 			"approvalRecords":          `{"entity":{"approvalRecords":{"records":[{"summary":{"id":"approval-1","status":"APPROVED"}}],"cursor":"next"}}}`,
 			"cardAccounts":             `{"entity":{"cardAccounts":[{"id":"cards-1","totalBalance":{"usdAmount":"10000"},"cards":{"cards":[{"id":"card-1","limitAmountMinor":"12345"}],"cursor":"next"}}]}}`,
-			"cardTransactions":         `{"cardTransactions":{"transactions":[{"transactionId":"card-tx-1","amountMinor":"12345","currency":"USD"}],"cursor":"next"}}`,
-			"treausryPositionAccounts": `{"entity":{"treausryPositionAccounts":[{"id":"position-1","currentValueInAssets":"1.23456789","currentValueInUSD":"12345.6789","investedInUSD":"10000","unrealizedProfitInUSD":"2345.6789","currentAPY":"0.05","vault":{"id":"vault-1","apy":"0.04","underlyingInstrument":{"id":"instrument-1","decimals":18,"asset":{"id":"asset-1","symbol":"ETH"}}}}]}}`,
+			"cardTransactions":         `{"cardTransactions":{"transactions":[{"transactionId":"card-deposit","currency":"USDC","transactionType":"DEPOSIT"},{"transactionId":"card-withdraw","currency":"USDC","transactionType":"WITHDRAW"},{"transactionId":"card-spend","currency":"USD","transactionType":"SPEND"}],"cursor":"next"}}`,
+			"treausryPositionAccounts": `{"entity":{"treausryPositionAccounts":[{"id":"position-1","currentValueInAssets":"1.23456789","currentValueInUSD":"12345.6789","investedInUSD":"10000","unrealizedProfitInUSD":"2345.6789","vault":{"id":"vault-1","apy":"0.04","underlyingInstrument":{"id":"instrument-1","decimals":18,"asset":{"id":"asset-1","symbol":"ETH"}}}}]}}`,
 			"statementExports":         `{"statementExports":{"tasks":[{"id":"export-1","status":"COMPLETED","rowCount":100}],"cursor":"next"}}`,
 			"userMemberships":          `{"entity":{"userMemberships":{"memberships":[{"user":{"id":"user-1","name":"Reader"}}],"cursor":"next"}}}`,
-			"assets":                   `{"entity":{"assets":{"assets":[{"id":"asset-1","symbol":"ETH","defaultDecimals":18}],"cursor":"next"}}}`,
+			"assets":                   `{"entity":{"assets":{"assets":[{"id":"asset-1","symbol":"ETH","defaultDecimals":18}]}}}`,
 			"globalSearch":             `{"globalSearch":{"groups":[{"type":"TRANSACTIONS","items":[{"__typename":"Transaction","transactionId":"tx-1"}]}],"total":1}}`,
 		}
 		data := `{"entity":{"id":"entity-a","totalBalance":{"usdAmount":"12345.6789"}}}`
@@ -146,12 +146,37 @@ func TestMCPToolsEndToEnd(t *testing.T) {
 					t.Fatalf("missing deterministic amount: %#v", v)
 				}
 			}
+			if surface.Field == "cardTransactions" {
+				var data struct {
+					CardTransactions struct {
+						Transactions []struct{ Currency string }
+						Cursor       string
+					}
+				}
+				if err := json.Unmarshal(response.Data, &data); err != nil {
+					t.Fatal(err)
+				}
+				page := data.CardTransactions
+				if len(page.Transactions) != 3 || page.Cursor != "next" || page.Transactions[0].Currency != "USDC" || page.Transactions[2].Currency != "USD" || len(response.NormalizedValues) != 0 {
+					t.Fatalf("lost funding activity, spending metadata, or pagination: %s", response.Data)
+				}
+			}
+			if surface.Field == "treausryPositionAccounts" {
+				c := response.ReadCoverage["/entity/treausryPositionAccounts"]
+				if c.Status != "complete" || c.SourceLimit != 200 || c.ReturnedItems == nil || *c.ReturnedItems != 1 {
+					t.Fatalf("missing MCP coverage: %#v", response.ReadCoverage)
+				}
+			}
 		})
 	}
 	before := calls.Load()
 	for _, args := range []map[string]any{
 		{"query": `mutation { _empty }`},
 		{"query": `query($entityId:ID!){entity(id:$entityId){id}}`, "variables": map[string]any{"entityId": "other"}},
+		{"query": `{cardTransactions(entityId:"entity-a"){transactions{amountMinor currency}}}`},
+		{"query": `{entity(id:"entity-a"){treausryPositionAccounts{currentAPY}}}`},
+		{"query": `{entity(id:"entity-a"){assets(first:1){assets{id}}}}`},
+		{"query": `{entity(id:"entity-a"){assets(after:"next"){assets{id}}}}`},
 	} {
 		r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "reah_query", Arguments: args})
 		if err != nil {
@@ -159,6 +184,15 @@ func TestMCPToolsEndToEnd(t *testing.T) {
 		}
 		if !r.IsError {
 			t.Fatal("unsafe query accepted over MCP")
+		}
+	}
+	for _, args := range []map[string]any{
+		{"arguments": map[string]any{"first": 1}},
+		{"arguments": map[string]any{"after": "next"}},
+	} {
+		r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "reah_list_assets", Arguments: args})
+		if err != nil || !r.IsError {
+			t.Fatalf("accepted nonfunctional asset pagination: %v %#v", err, r)
 		}
 	}
 	if calls.Load() != before {

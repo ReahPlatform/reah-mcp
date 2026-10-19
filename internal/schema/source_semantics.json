@@ -1,11 +1,4 @@
 {
-  "TreasuryPositionAccount.currentAPY": {
-    "unit": "decimal_fraction",
-    "scale": 0,
-    "normalized_unit": "utilized_apy",
-    "description": "Annualized APY realized by this position from its entry and current share prices. This is the Portfolio Utilized APY, not the vault's current product quote.",
-    "evidence_ref": "runtime:agent-compute/current_entity_read_helpers.js#treasuryPositionRowNative"
-  },
   "TreasuryPositionAccount.currentValueInUSD": {
     "unit": "usd_minor_units",
     "scale": 2,

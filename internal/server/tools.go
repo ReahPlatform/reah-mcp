@@ -35,11 +35,11 @@ var Surfaces = []Surface{
 	{"reah_list_invoices", "invoices", false, "Invoice page with status and dates; unpaid invoices do not prove cash received.", "invoices { id invoiceNumber status customerName issueDate dueDate } cursor"},
 	{"reah_list_approvals", "approvalRecords", false, "Approval records and current state. No approval decisions or execution.", "records { summary { id humanId status type initiatedAt completedAt } } cursor"},
 	{"reah_list_card_accounts", "cardAccounts", false, "Card accounts, balances and a first page of masked cards. Follow each nested cards.cursor using a custom fields selection. PAN/CVV reads are excluded.", "id totalBalance { usdAmount } cards(first:100) { cards { id nickname last4 status limitAmountMinor limitFrequency } cursor }"},
-	{"reah_list_card_transactions", "cardTransactions", true, "Card transaction page scoped to configured entity.", "transactions { transactionId merchantName amountMinor currency transactionType uiStatus initiatedAt } cursor"},
-	{"reah_list_treasury_positions", "treausryPositionAccounts", false, "Treasury positions. USD raw values are cents. currentAPY is position Utilized APY; vault.apy is current product APY. Both are decimal fractions; use normalized_values.percent for percentages.", "id entityId currentValueInAssets currentValueInUSD investedInUSD unrealizedProfitInUSD currentAPY vault { id name apy underlyingInstrument { id decimals asset { id symbol } } }"},
+	{"reah_list_card_transactions", "cardTransactions", true, "Card activity metadata scoped to the configured entity, including USD spending and USDC funding activity. Transaction amounts are not exposed because the upstream field mixes unit sources without an explicit scale.", "transactions { transactionId merchantName currency transactionType uiStatus initiatedAt } cursor"},
+	{"reah_list_treasury_positions", "treausryPositionAccounts", false, "At most the latest 200 matching Treasury positions, ordered by creation time and ID descending, without continuation. Check read_coverage before claiming completeness. USD raw values are cents. vault.apy is current product APY; use normalized_values.percent. Position currentAPY is not exposed because upstream zero values conflate unavailable and nonpositive returns.", "id entityId currentValueInAssets currentValueInUSD investedInUSD unrealizedProfitInUSD vault { id name apy underlyingInstrument { id decimals asset { id symbol } } }"},
 	{"reah_list_statements", "statementExports", true, "Existing statement export tasks and metadata only. Does not generate exports or download URLs.", "tasks { id status fileName rowCount createdAt completedAt } cursor"},
 	{"reah_list_members", "userMemberships", false, "Entity member page.", "memberships { user { id name email } joinedAt } cursor"},
-	{"reah_list_assets", "assets", false, "Asset identities, symbols and default precision. Specific instrument decimals take precedence over asset defaults.", "assets { id name symbol fiat defaultDecimals } cursor"},
+	{"reah_list_assets", "assets", false, "Full entity asset catalog, without pagination arguments or a cursor. Specific instrument decimals take precedence over asset defaults.", "assets { id name symbol fiat defaultDecimals }"},
 	{"reah_search", "globalSearch", true, "Search permitted accounts, transactions, approvals and contacts. Requires query in arguments; results are search matches, not complete rosters.", "query total groups { type items { __typename ... on Wallet { id name } ... on BankingAccount { id name } ... on Transaction { transactionId: id humanId type state } ... on Contact { id name } ... on ApprovalRecordDetail { summary { id humanId status } } ... on BlockchainAccount { id } ... on InstrumentAccount { id } } }"},
 }
 
@@ -62,7 +62,7 @@ func tool(name, description string) *mcp.Tool {
 }
 
 func New(client *gateway.Client) (*mcp.Server, error) {
-	s := mcp.NewServer(&mcp.Implementation{Name: "reah-mcp", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: "Read-only Reah financial data, bound to one configured user credential and entity. Only reviewed fields are exposed. Every read includes field_semantics and exact normalized_values keyed by JSON Pointer. Use normalized_values.amount and currency for display/calculation; raw data stays in upstream units. USD balance and Treasury raw amounts are cents; invoice amountDueUsd is already dollars. APYs are decimal fractions; normalized_values.percent is already multiplied by 100. Never convert normalized amounts again. Start with reah_catalog and reah_describe_type; select all required currency/scale companions for custom queries. Follow every cursor before claiming complete coverage. Do not sum overlapping balance views or substitute transaction lists for settled cashflow. Missing/null/legacy unavailable data is never zero. Unit conversion does not establish spendability or evidence completeness."})
+	s := mcp.NewServer(&mcp.Implementation{Name: "reah-mcp", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: "Read-only Reah financial data, bound to one configured user credential and entity. Only reviewed fields are exposed. Card transaction amounts and position currentAPY are absent because their units or availability cannot be unambiguously established. Every read includes field_semantics and exact normalized_values keyed by JSON Pointer. Use normalized_values.amount and currency for display/calculation; raw data stays in upstream units. USD balance and Treasury raw amounts are cents; invoice amountDueUsd is already dollars. APYs are decimal fractions; normalized_values.percent is already multiplied by 100. Never convert normalized amounts again. Start with reah_catalog and reah_describe_type; select all required currency/scale companions for custom queries. Follow every available cursor and check read_coverage before claiming complete coverage. Treasury positions and summaries cover at most the latest 200 matching positions; a full list batch or any summary alone cannot prove completeness. Assets return a full catalog without pagination. Do not sum overlapping balance views or substitute transaction lists for settled cashflow. Missing/null/legacy unavailable data is never zero. Unit conversion does not establish spendability or evidence completeness."})
 	mcp.AddTool(s, tool("reah_catalog", "List available read surfaces, GraphQL return types and configured entity."), func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, any, error) {
 		var entries []map[string]any
 		for _, surface := range Surfaces {
@@ -73,7 +73,7 @@ func New(client *gateway.Client) (*mcp.Server, error) {
 			f := parent.Fields.ForName(surface.Field)
 			entries = append(entries, map[string]any{"tool": surface.Name, "field": surface.Field, "parent_type": parent.Name, "return_type": f.Type.String(), "description": surface.Description})
 		}
-		return nil, map[string]any{"entity_id": client.EntityID, "surfaces": entries, "value_contract": "Raw data preserves upstream units. field_semantics documents every selected field. normalized_values uses JSON Pointer paths, exact decimal strings, explicit units/currency/scale and APY percentages. Never apply a second conversion. Only reviewed fields are discoverable and queryable."}, nil
+		return nil, map[string]any{"entity_id": client.EntityID, "surfaces": entries, "value_contract": "Raw data preserves upstream units. field_semantics documents every selected field. normalized_values uses JSON Pointer paths, exact decimal strings, explicit units/currency/scale and APY percentages. Never apply a second conversion. Only reviewed fields are discoverable and queryable. read_coverage describes bounded source completeness separately from normalized_values; source limits also appear in field_semantics."}, nil
 	})
 	mcp.AddTool(s, tool("reah_describe_type", "Describe a local pinned read schema type, its fields, arguments and available unit documentation. Makes no upstream request."), func(_ context.Context, _ *mcp.CallToolRequest, in DescribeInput) (*mcp.CallToolResult, any, error) {
 		text, err := readschema.Describe(client.Schema, in.Type)
@@ -89,7 +89,7 @@ func New(client *gateway.Client) (*mcp.Server, error) {
 		}
 		return nil, map[string]any{"definition": text, "field_semantics": contracts}, err
 	})
-	mcp.AddTool(s, tool("reah_query", "Execute one validated, entity-bound query across the permitted read surfaces. Returns raw data, field_semantics and exact normalized_values. Mutations, subscriptions and fields without reviewed contracts are unavailable."), func(ctx context.Context, _ *mcp.CallToolRequest, in QueryInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, tool("reah_query", "Execute one validated, entity-bound query across the permitted read surfaces. Returns raw data, field_semantics, exact normalized_values and read_coverage for source-bounded fields. Mutations, subscriptions and fields without reviewed contracts are unavailable."), func(ctx context.Context, _ *mcp.CallToolRequest, in QueryInput) (*mcp.CallToolResult, any, error) {
 		return call(ctx, client, in.Query, in.Variables)
 	})
 	for _, surface := range Surfaces {
@@ -105,7 +105,7 @@ func New(client *gateway.Client) (*mcp.Server, error) {
 		if _, err := readschema.Plan(client.Schema, doc, nil); err != nil {
 			return nil, fmt.Errorf("%s default contract: %w", surface.Name, err)
 		}
-		mcp.AddTool(s, tool(surface.Name, surface.Description+" Results include field_semantics and exact normalized_values; use normalized_values.amount and currency, and do not convert twice."), func(ctx context.Context, _ *mcp.CallToolRequest, in ReadInput) (*mcp.CallToolResult, any, error) {
+		mcp.AddTool(s, tool(surface.Name, surface.Description+" Results include field_semantics, exact normalized_values and read_coverage for source-bounded fields; use normalized_values.amount and currency, and do not convert twice."), func(ctx context.Context, _ *mcp.CallToolRequest, in ReadInput) (*mcp.CallToolResult, any, error) {
 			query, vars, err := BuildQuery(client.Schema, surface, in)
 			if err != nil {
 				return nil, nil, err

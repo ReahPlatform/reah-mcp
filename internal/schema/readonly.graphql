@@ -143,17 +143,13 @@ type Asset {
 	defaultDecimals: Int!
 }
 """
-Paginated assets
+Full entity asset catalog. No pagination parameters or cursor are exposed.
 """
 type AssetConnection {
 	"""
-	Records in this page only. Fetch subsequent pages before claiming complete coverage.
+	Full entity asset catalog returned by the upstream service; not a paginated connection.
 	"""
 	assets: [Asset!]!
-	"""
-	Opaque next-page cursor. Pass as after with unchanged filters; null or empty indicates no next page.
-	"""
-	cursor: String
 }
 """
 A balance for an owner at a specific aggregation level
@@ -331,15 +327,11 @@ type CardTransaction {
 	"""
 	merchantName: String!
 	"""
-	Signed USD card activity amount in integer cents. Preserve transactionType and uiStatus; the raw sign alone does not establish cashflow classification.
-	"""
-	amountMinor: String!
-	"""
-	Currency code of amountMinor. This MCP contract admits USD card amounts only.
+	Currency label reported for card activity, including USD or USDC. No transaction amount is exposed because the upstream field mixes sources without an explicit scale.
 	"""
 	currency: String!
 	"""
-	Card transaction category; use together with uiStatus and preserve the raw sign.
+	Card activity category; use together with uiStatus. Funding events and merchant spending are distinct.
 	"""
 	transactionType: CardTransactionType!
 	"""
@@ -490,19 +482,9 @@ type Entity {
 		after: String
 	): ContactConnection!
 	"""
-	Paginated asset catalog.
+	Full entity asset catalog. The upstream resolver does not implement pagination; no first, after or cursor is exposed.
 	"""
-	assets(
-		"""
-		Page size from 1 to 200; defaults to 100 in business tools.
-		"""
-		first: Int
-
-		"""
-		Opaque next-page cursor; retain the original filters and window.
-		"""
-		after: String
-	): AssetConnection!
+	assets: AssetConnection!
 	"""
 	Paginated memberships of this entity.
 	"""
@@ -518,11 +500,11 @@ type Entity {
 		after: String
 	): EntityMembershipConnection!
 	"""
-	Treasury positions. USD values are valuations, not immediately spendable cash; positions and account totals may overlap.
+	At most the latest 200 matching Treasury positions, ordered by created_at DESC, id DESC. No continuation is available. A full batch cannot establish complete holdings; check read_coverage. USD valuations are not spendable cash and may overlap account totals.
 	"""
 	treausryPositionAccounts: [TreasuryPositionAccount!]!
 	"""
-	Treasury portfolio summary. Do not add to its underlying position values.
+	Aggregate of at most the latest 200 matching Treasury positions, not a guaranteed full portfolio total. No continuation or contributing count is available; read_coverage reports completeness as not_proven. Do not add to underlying position values.
 	"""
 	treausryPositionAccountSummary: TreasuryPositionAccountSummary!
 	"""
@@ -1109,11 +1091,10 @@ type TreasuryPositionAccount {
 	Backend ledger USD minor units; divide by 100 for USD dollars.
 	"""
 	unrealizedProfitInUSD: String!
-	"""
-	Annualized APY realized by this position from its entry and current share prices. This is the Portfolio Utilized APY, not the vault's current product quote. Decimal fraction: 0.05 means 5%; normalized_values.percent is already multiplied by 100.
-	"""
-	currentAPY: String!
 }
+"""
+Aggregate of at most the latest 200 matching Treasury positions. Not a proven full portfolio total; inspect the enclosing field's read_coverage.
+"""
 type TreasuryPositionAccountSummary {
 	"""
 	Backend ledger USD minor units; divide by 100 for USD dollars.
