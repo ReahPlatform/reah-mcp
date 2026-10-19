@@ -4,13 +4,21 @@ permissions:
   contents: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: reah-ci-stateless
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      - name: Ensure native build tools
+        run: |
+          set -euo pipefail
+          if command -v make >/dev/null 2>&1 && command -v gcc >/dev/null 2>&1; then
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential
       - run: make lint
       - run: make test
       - run: make build
