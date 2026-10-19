@@ -1,14 +1,19 @@
 # Reah MCP
 
-让 AI 助手通过 MCP 读取和分析 Reah 财务数据：查看余额与账户、追踪交易和结算流水、
-了解卡支出、发票和 Treasury 持仓。所有工具只读，并沿用 Reah 的用户权限。
+Give AI assistants read-only access to Reah financial data: balances, accounts,
+transactions, settled cashflow, card spending, invoices, and treasury positions.
+The service validates queries locally and uses the upstream identity's Reah
+permissions to access data.
 
-提供 Go MCP 服务，以及 Claude Code、Codex 和 Cursor 的插件配置。
-数据接口版本固定到 2026-10-18 的 Reah schema，来源与更新方式见文末。
+Includes a Go MCP server and plugin configurations for Claude Code, Codex, and
+Cursor. The API schema is pinned to the Reah revision dated October 18, 2026.
 
-## 运行
+## Run locally
 
-需要 Go 1.25.5+，以及能读取目标企业的 Reah 用户 access token。
+Requires Go 1.25.5+ and a Reah Agent bearer credential (`reah_agent_...`) with
+access to the target entity. The current GraphQL Gateway bearer authentication
+path accepts Agent credentials; an ordinary browser session or a Google login
+token is not a substitute.
 
 ```sh
 make build
@@ -20,93 +25,110 @@ export REAH_ACCESS_TOKEN
 reah-mcp
 ```
 
-最后一条命令启动 stdio MCP，由客户端通过 stdin/stdout 通信。
-服务日志只写 stderr。凭证通过进程环境提供，不写入插件配置或 Git。
-token 过期后需要提供新 token 并重启服务；不复用浏览器 cookie、不自动续期。
+The last command starts the stdio MCP server. Logs go to stderr. Supply
+credentials through the process environment; keep them out of plugin manifests
+and Git. Replace expired credentials and restart the server. Browser cookies and
+automatic token renewal are not used.
 
-通用 MCP 配置（先确保客户端进程继承上面的三个环境变量）：
+Configure a client after making the three environment variables available to its
+process:
 
 ```json
 {"mcpServers":{"reah":{"command":"reah-mcp"}}}
 ```
 
-桌面客户端若从 Finder 启动，通常不会继承终端中的 export。
-请在客户端自己的 MCP 环境变量配置中提供这三个值，或从配置好环境的终端启动客户端。
+Desktop clients launched from Finder generally do not inherit terminal exports.
+Set the variables in the client's MCP environment settings, or launch the client
+from the configured terminal.
 
-## 插件安装
+## Install the plugin
 
-本仓库包含 Claude Code、Codex、Cursor / Agent Plugins 的 manifest 和
-`reah-mcp` 查询技能。安装插件前先安装上面的二进制并配置客户端环境。
-客户端需要 GitHub 私有仓库访问权限。
+This repository includes Claude Code, Codex, and Cursor / Agent Plugins manifests
+and a `reah-mcp` query skill. Install the binary and configure its environment
+first. Installation also requires access to this private GitHub repository.
 
-Claude Code：
+Claude Code:
 
 ```text
 /plugin marketplace add ReahPlatform/reah-mcp
 /plugin install reah@reah-marketplace
 ```
 
-Codex：
+Codex:
 
 ```sh
 codex plugin marketplace add ReahPlatform/reah-mcp
 ```
 
-然后在 `/plugins` 中选择 Reah 安装。Cursor 可使用根目录的插件文件；
-需要本地试用时，将仓库复制到 `~/.cursor/plugins/local/reah` 并重新加载窗口。
-这些配置启动本地服务，没有预设尚未部署的域名。
+Then select Reah in `/plugins`. Cursor can use the root plugin files. For local
+development, copy the repository to `~/.cursor/plugins/local/reah` and reload the
+window. These configurations launch the local server; they do not point to an
+undeployed hosted service.
 
-## HTTP
+## Self-hosted HTTP
 
 ```sh
 export REAH_MCP_HTTP_TOKEN="$(openssl rand -hex 32)"
 reah-mcp -transport http -listen 127.0.0.1:8080
 ```
 
-Streamable HTTP 路径为 `/mcp`，所有 MCP 请求都需要
-`Authorization: Bearer <REAH_MCP_HTTP_TOKEN>`。这是独立的 MCP 客户端访问凭证；
-Reah access token 仅用于服务到 GraphQL 的调用。远程访问需要部署者提供 HTTPS 反向代理。
-示例连接配置见 [examples/http.mcp.json](examples/http.mcp.json)。
+The Streamable HTTP endpoint is `/mcp`. Every MCP request requires
+`Authorization: Bearer <REAH_MCP_HTTP_TOKEN>`. This is a separate client access
+credential. `REAH_ACCESS_TOKEN` is used only for upstream GraphQL calls. Provide
+an HTTPS reverse proxy for remote access. See
+[examples/http.mcp.json](examples/http.mcp.json).
 
-一个服务实例固定使用一份用户凭证和一个企业 ID。拿到 HTTP token 的客户端
-将以这份身份读取数据，因此不同用户/企业必须使用隔离实例。
-当前使用部署者提供的访问凭证。托管 OAuth 登录需要另外配置 Reah OAuth 客户端、
-授权 scope、回调及部署域名。
+An instance uses one fixed upstream credential and entity. Clients holding its
+HTTP token share that identity, so unrelated users and entities require isolated
+instances. The HTTP token is not an OAuth access token.
 
-## 只读工具
+## Hosted authorization design
 
-| 工具 | 数据 |
+The proposed hosted experience is **Add Reah → sign in → choose a business →
+authorize**. It reuses Reah login and the Agent credential lifecycle, with a
+separate OAuth authorization grant and enforced read-only delegation.
+
+The implementation plan, API contracts, data model, rollout, and acceptance
+criteria are in [Hosted OAuth design](docs/hosted-oauth-design.md).
+This is a design proposal; hosted OAuth and its proposed URLs are not deployed
+by this repository's current implementation.
+
+## Read-only tools
+
+| Tool | Data |
 | --- | --- |
-| `reah_catalog` / `reah_describe_type` | 查询目录、企业 ID、字段、参数及单位说明 |
-| `reah_get_entity` / `reah_list_balances` | 企业概览、按 instrument 分页的余额 |
-| `reah_list_wallets` / `reah_list_banking_accounts` | 钱包、银行账户及余额 |
-| `reah_list_transactions` / `reah_list_settled_movements` | 交易状态、结算流水和覆盖信息 |
-| `reah_list_contacts` / `reah_list_invoices` | 联系人、发票 |
-| `reah_list_approvals` / `reah_list_members` | 审批记录、企业成员 |
-| `reah_list_card_accounts` / `reah_list_card_transactions` | 卡账户、脱敏卡信息、卡交易 |
-| `reah_list_treasury_positions` / `reah_list_statements` | Treasury 持仓、已有报表任务 |
-| `reah_list_assets` / `reah_search` | 资产目录、跨财务对象搜索 |
-| `reah_query` | 允许范围内的自定义只读 GraphQL 查询 |
+| `reah_catalog` / `reah_describe_type` | Query catalog, entity scope, fields, arguments, and units |
+| `reah_get_entity` / `reah_list_balances` | Entity overview and balances paginated by instrument |
+| `reah_list_wallets` / `reah_list_banking_accounts` | Wallets, bank accounts, and balances |
+| `reah_list_transactions` / `reah_list_settled_movements` | Transaction lifecycle and settled cashflow coverage |
+| `reah_list_contacts` / `reah_list_invoices` | Contacts and invoices |
+| `reah_list_approvals` / `reah_list_members` | Approval records and entity members |
+| `reah_list_card_accounts` / `reah_list_card_transactions` | Card accounts, masked cards, and card transactions |
+| `reah_list_treasury_positions` / `reah_list_statements` | Treasury positions and existing statement jobs |
+| `reah_list_assets` / `reah_search` | Asset catalog and financial object search |
+| `reah_query` | Custom GraphQL queries within the allowed read schema |
 
-列表工具接受 `arguments`（GraphQL 参数）和可选 `fields`（结果内的 GraphQL
-字段选择）。例如：
+List tools accept `arguments` for GraphQL arguments and optional `fields` for
+result selections:
 
 ```json
 {"arguments":{"first":100,"after":"PREVIOUS_CURSOR"},"fields":"transactions { id humanId type state } cursor"}
 ```
 
-结算流水必须指定时间窗口：
+Settled movements require an explicit time window:
 
 ```json
 {"arguments":{"settledFrom":"2026-10-01T00:00:00Z","settledTo":"2026-11-01T00:00:00Z","first":100}}
 ```
 
-继续结算流水分页时，把返回的 `nextPageToken` 传给 `arguments.after`。
-其他 connection 一般返回 `cursor`；卡账户的 `cards.cursor` 是各账户独立的嵌套分页，
-可以通过 `fields` 指定下一页的 `cards(first:100, after:"...")`。
-单次读取不自动穷尽分页。搜索匹配也不等于完整财务数据集。
+Pass a settled movement response's `nextPageToken` as `arguments.after`. Other
+connections generally return `cursor`. Each card account has a separate nested
+`cards.cursor`; select subsequent pages through `fields`, for example
+`cards(first:100, after:"...")`. A call does not automatically retrieve every
+page. Search matches do not establish a complete financial dataset.
 
-自定义查询中声明并使用 `$entityId: ID!`，服务自动填入配置的企业 ID：
+For custom queries, declare and use `$entityId: ID!`. The server supplies the
+configured entity ID:
 
 ```graphql
 query Cash($entityId: ID!) {
@@ -118,30 +140,39 @@ query Cash($entityId: ID!) {
 }
 ```
 
-`treausry...` 拼写来自现有上游 API。先用 `reah_describe_type` 查询 `Query`、
-`Entity` 或具体返回类型，再选择更详细的字段。
+The `treausry...` spelling is part of the upstream API. Use `reah_describe_type`
+to inspect `Query`, `Entity`, or a result type before selecting additional fields.
 
-## 数据含义与边界
+## Data semantics and boundaries
 
-- 返回原始 GraphQL `data` 和 `errors`。保留十进制字符串、游标、结算覆盖及排除计数，
-  不把缺失值转换成零。出现部分数据错误时，MCP 返回 `isError: true`，同时保留已返回的数据。
-- 金额单位沿用上游字段：例如 `usdValue.amountMinor` 需按 `scale` 还原，
-  `signedAmountSmallest` 需按 `instrumentDecimals` 还原。Treasury、卡限额和各种余额
-  不应仅按字段名推断单位，先看字段说明。不要用浮点数处理金额。
-- 交易列表包含不同生命周期状态；分析实际资金流应使用结算流水。
-  原始交易不能直接相加替代 settled movement。
-- 从 Agent 复用的是只读数据接口和固定 schema。没有复制 Agent 的归一化 helper、
-  财务计算策略、spam-safe 余额归一化、证据封存、LLM、Temporal、浏览器或审批执行链。
-  `totalBalance` 是上游原始观测，不等同于 Agent 的归一化 balance summary。
-- MCP 在发出网络请求前解析并校验 GraphQL，只允许一个 query 和封闭的只读根字段，
-  每个根字段的企业参数必须匹配配置。别名和 fragment 同样检查。
-  schema 不包含 mutation、subscription、身份生命周期、Agent 对话和卡 PAN/CVV 入口。
-  上游依然负责用户权限和具体资源的访问控制。
-- query 最大 64 KiB、展开后最多 2000 个 selection、最多 16 层字段，显式分页参数
-  限制为 1–200，响应最大 8 MiB，请求超时 30 秒。不会跟随重定向。
-- 报表工具只读现有任务；创建报表或取得下载 URL 在上游属于 mutation，因此没有暴露。
+- Returns raw GraphQL `data` and `errors`, preserving decimal strings, cursors,
+  settled coverage, and exclusion counts. Missing amounts are not converted to
+  zero. Partial errors set MCP `isError: true` while preserving returned data.
+- Monetary units follow the upstream fields. Decode `usdValue.amountMinor`
+  using `scale`, and `signedAmountSmallest` using `instrumentDecimals`. Read
+  field descriptions before comparing treasury values, card limits, or balances.
+  Use exact decimal arithmetic.
+- Ordinary transaction lists include multiple lifecycle states. Use settled
+  movements to analyze actual cashflow; raw transactions cannot substitute for
+  a settled ledger.
+- Reuses the Agent's read API contracts and pinned schema. Agent normalization
+  helpers, financial calculation policies, spam-safe balance normalization,
+  evidence admission, LLM execution, Temporal workflows, browser automation,
+  and approval execution are outside this service. `totalBalance` is an upstream
+  observation, not the Agent's normalized balance summary.
+- Parses and validates GraphQL before network access. Only one query operation
+  and an explicit set of read roots are allowed. Every root entity argument
+  must match the configured scope, including aliases and fragments. The schema
+  excludes mutations, subscriptions, identity lifecycle operations, Agent
+  conversations, and card PAN/CVV access. Upstream services enforce permissions
+  and resource ownership.
+- Limits queries to 64 KiB, 2,000 expanded selections, and 16 field levels.
+  Explicit page sizes must be 1–200. Responses are limited to 8 MiB and requests
+  time out after 30 seconds. Redirects are not followed.
+- Statement tools read existing jobs. Generating statements or requesting
+  download URLs requires upstream mutations and is not exposed.
 
-## 开发与验证
+## Development
 
 ```sh
 make lint
@@ -149,13 +180,15 @@ make test
 make build
 ```
 
-测试覆盖所有业务工具的 MCP 调用、HTTP 协议/鉴权、非法查询在网络前被拒绝、
-企业范围、分页、精度、部分错误、超限响应和重定向。
-这些检查使用本地模拟 GraphQL；真实环境联调需要提供对应凭证。
+Checks cover all business tools, MCP and HTTP authentication, rejected queries
+before network access, entity scope, pagination, precision, partial errors,
+response limits, and redirects. Tests use a local mock GraphQL service; live
+integration testing requires environment-specific credentials.
 
-[docs/upstream.json](docs/upstream.json) 记录 `reah-agent`
-[`474fda4a`](https://github.com/ReahPlatform/reah-agent/commit/474fda4a771289782c5f9e793a4f0c33e7076f79)
-提交及原 schema 文件的 SHA-256。
-更新 pin 后执行 `make schema`，从相邻 `../reah-agent` 的指定 Git 提交重新提取
-允许字段和可达类型；输入哈希不匹配会失败。原始写入 schema 不进入新仓库。
-本项目不使用数据库、sqlc 或复制 sqlc 生成文件。
+[docs/upstream.json](docs/upstream.json) records the pinned `reah-agent`
+[commit](https://github.com/ReahPlatform/reah-agent/commit/474fda4a771289782c5f9e793a4f0c33e7076f79)
+and SHA-256 hashes of its schema sources. After updating the pin, run
+`make schema` to extract allowed fields and reachable types from the specified
+commit in the adjacent `../reah-agent` checkout. Hash mismatches fail generation.
+Raw mutation schemas are not packaged. This service does not use a database,
+sqlc, or copied sqlc output.
