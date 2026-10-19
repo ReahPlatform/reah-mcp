@@ -73,14 +73,14 @@ func TestScopedReadPreservesMoneyPaginationAndErrors(t *testing.T) {
 		if payload.Variables["entityId"] != "entity-a" {
 			t.Error("entity not bound")
 		}
-		fmt.Fprint(w, `{"data":{"entity":{"totalBalance":{"usdAmount":"9007199254740993.123456789"},"transactions":{"cursor":"next-page"}}},"errors":[{"message":"one field unavailable","path":["entity","name"]}]}`)
+		fmt.Fprint(w, `{"data":{"x":{"totalBalance":{"usdAmount":"9007199254740993.123456789"},"transactions":{"cursor":"next-page"}}},"errors":[{"message":"one field unavailable","path":["x","name"]}]}`)
 	}))
 	defer upstream.Close()
 	c, err := New(upstream.URL, "test-token", "entity-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	query := `query Read($entityId:ID!, $n:Int) { ...Scope } fragment Scope on Query { x:entity(id:$entityId){id transactions(first:$n){cursor}} }`
+	query := `query Read($entityId:ID!, $n:Int) { ...Scope } fragment Scope on Query { x:entity(id:$entityId){name totalBalance{usdAmount} transactions(first:$n){cursor}} }`
 	result, err := c.Query(context.Background(), query, map[string]any{"n": 100})
 	if err != nil {
 		t.Fatal(err)

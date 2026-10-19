@@ -12,6 +12,8 @@ import (
 
 	"github.com/ReahPlatform/reah-mcp/internal/gateway"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 )
 
 func fixture(t *testing.T) (*mcp.Server, *atomic.Int32) {
@@ -21,6 +23,7 @@ func fixture(t *testing.T) (*mcp.Server, *atomic.Int32) {
 		calls.Add(1)
 		var payload struct {
 			Variables map[string]any `json:"variables"`
+			Query     string         `json:"query"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Error(err)
@@ -28,7 +31,38 @@ func fixture(t *testing.T) (*mcp.Server, *atomic.Int32) {
 		if payload.Variables["entityId"] != "entity-a" {
 			t.Error("scope missing")
 		}
-		fmt.Fprint(w, `{"data":{"read_result":{"amount":"123.456789","cursor":"next"}}}`)
+		fixtures := map[string]string{
+			"instrumentBalances":       `{"entity":{"instrumentBalances":{"balances":[{"nativeAmount":"1.23456789","usdAmount":"12345.6789","aggregation":{"__typename":"Instrument","id":"instrument-1","decimals":18,"asset":{"id":"asset-1","symbol":"ETH"}}}],"cursor":"next"}}}`,
+			"wallets":                  `{"entity":{"wallets":[{"id":"wallet-1","totalBalance":{"usdAmount":"12345.6789"}}]}}`,
+			"bankingAccounts":          `{"entity":{"bankingAccounts":[{"id":"bank-1","totalBalance":{"usdAmount":"12345.6789"}}]}}`,
+			"transactions":             `{"entity":{"transactions":{"transactions":[{"id":"tx-1","state":"completed"}],"cursor":"next"}}}`,
+			"analysisSettledMovements": `{"entity":{"analysisSettledMovements":{"movements":[{"signedAmountSmallest":"-1234567","instrumentDecimals":6,"assetSymbol":"USDC","usdValue":{"amountMinor":"-123","currency":"USD","scale":2},"role":"PRINCIPAL","valuationStatus":"EXACT"}],"nextPageToken":"next"}}}`,
+			"contacts":                 `{"entity":{"contacts":{"contacts":[{"id":"contact-1"}],"cursor":"next"}}}`,
+			"invoices":                 `{"entity":{"invoices":{"invoices":[{"id":"invoice-1","status":"SENT"}],"cursor":"next"}}}`,
+			"approvalRecords":          `{"entity":{"approvalRecords":{"records":[{"summary":{"id":"approval-1","status":"APPROVED"}}],"cursor":"next"}}}`,
+			"cardAccounts":             `{"entity":{"cardAccounts":[{"id":"cards-1","totalBalance":{"usdAmount":"10000"},"cards":{"cards":[{"id":"card-1","limitAmountMinor":"12345"}],"cursor":"next"}}]}}`,
+			"cardTransactions":         `{"cardTransactions":{"transactions":[{"transactionId":"card-tx-1","amountMinor":"12345","currency":"USD"}],"cursor":"next"}}`,
+			"treausryPositionAccounts": `{"entity":{"treausryPositionAccounts":[{"id":"position-1","currentValueInAssets":"1.23456789","currentValueInUSD":"12345.6789","investedInUSD":"10000","unrealizedProfitInUSD":"2345.6789","currentAPY":"0.05","vault":{"id":"vault-1","apy":"0.04","underlyingInstrument":{"id":"instrument-1","decimals":18,"asset":{"id":"asset-1","symbol":"ETH"}}}}]}}`,
+			"statementExports":         `{"statementExports":{"tasks":[{"id":"export-1","status":"COMPLETED","rowCount":100}],"cursor":"next"}}`,
+			"userMemberships":          `{"entity":{"userMemberships":{"memberships":[{"user":{"id":"user-1","name":"Reader"}}],"cursor":"next"}}}`,
+			"assets":                   `{"entity":{"assets":{"assets":[{"id":"asset-1","symbol":"ETH","defaultDecimals":18}],"cursor":"next"}}}`,
+			"globalSearch":             `{"globalSearch":{"groups":[{"type":"TRANSACTIONS","items":[{"__typename":"Transaction","transactionId":"tx-1"}]}],"total":1}}`,
+		}
+		data := `{"entity":{"id":"entity-a","totalBalance":{"usdAmount":"12345.6789"}}}`
+		doc, err := parser.ParseQuery(&ast.Source{Input: payload.Query})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		root := doc.Operations[0].SelectionSet[0].(*ast.Field)
+		field := root.Name
+		if field == "entity" && len(root.SelectionSet) == 1 {
+			field = root.SelectionSet[0].(*ast.Field).Name
+		}
+		if candidate, ok := fixtures[field]; ok {
+			data = candidate
+		}
+		fmt.Fprintf(w, `{"data":%s}`, data)
 	}))
 	t.Cleanup(u.Close)
 	c, err := gateway.New(u.URL, "upstream-test-token", "entity-a")
@@ -95,8 +129,22 @@ func TestMCPToolsEndToEnd(t *testing.T) {
 			if err != nil || r.IsError {
 				t.Fatalf("read: %v %#v content=%v", err, r, r.Content)
 			}
-			if !strings.Contains(r.Content[0].(*mcp.TextContent).Text, "123.456789") {
-				t.Fatal("lost raw amount")
+			var response gateway.Response
+			if err := json.Unmarshal([]byte(r.Content[0].(*mcp.TextContent).Text), &response); err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Data) == 0 || len(response.FieldSemantics) == 0 {
+				t.Fatal("missing data or field semantics")
+			}
+			for _, field := range response.FieldSemantics {
+				if field.Description == "" || field.Evidence == "" {
+					t.Fatalf("undocumented field: %#v", field)
+				}
+			}
+			for _, v := range response.NormalizedValues {
+				if v.Status != "available" || v.Amount == nil {
+					t.Fatalf("missing deterministic amount: %#v", v)
+				}
 			}
 		})
 	}

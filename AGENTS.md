@@ -10,3 +10,7 @@
   request.
 - Keep MCP read-only. Enforce entity scope and the closed schema before sending
   upstream requests; never add identity, signing, or financial write operations.
+- Expose only fields and arguments admitted by `internal/schema/contracts.go`.
+  Verify financial units against producer and consumer code, record evidence,
+  and test exact conversions. Unreviewed fields must be absent from the public
+  schema and discovery; runtime rejection alone is insufficient.
