@@ -44,8 +44,10 @@ from the configured terminal.
 ## Install the plugin
 
 This repository includes Claude Code, Codex, and Cursor / Agent Plugins manifests
-and a `reah-mcp` query skill. Install the binary and configure its environment
-first. Installation also requires access to this private GitHub repository.
+and an optional `reah-mcp` skill for financial analysis workflows. Field meanings,
+units, and normalized values are provided by the MCP server independently of the
+skill. Install the binary and configure its environment first. Installation also
+requires access to this private GitHub repository.
 
 Claude Code:
 
