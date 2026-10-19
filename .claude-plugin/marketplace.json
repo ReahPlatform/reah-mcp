@@ -1,0 +1,14 @@
+{
+  "name": "reah-marketplace",
+  "owner": {
+    "name": "ReahPlatform"
+  },
+  "plugins": [
+    {
+      "name": "reah",
+      "source": "./",
+      "description": "Connect your AI assistant to Reah for read-only financial queries and analysis.",
+      "version": "0.1.0"
+    }
+  ]
+}

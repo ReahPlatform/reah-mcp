@@ -1,0 +1,19 @@
+{
+  "name": "reah-marketplace",
+  "interface": {
+    "displayName": "Reah"
+  },
+  "plugins": [
+    {
+      "name": "reah",
+      "source": {
+        "source": "local",
+        "path": "./plugins/reah"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

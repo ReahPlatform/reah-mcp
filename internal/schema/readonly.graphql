@@ -1,0 +1,4740 @@
+type APYDetail {
+	date: Time!
+	apy1d: String!
+	apy7d: String!
+	apy30d: String!
+}
+type AddSmartBalanceDetails {
+	v: Int!
+	entityId: String!
+	entity: Entity!
+	walletId: String!
+	wallet: Wallet
+	vaultId: String!
+	vault: Vault
+	networkId: String!
+	network: Network
+	instrumentId: String!
+	instrument: Instrument
+	instrumentAccountId: String!
+	instrumentAccount: InstrumentAccount
+	assetAmount: String!
+	notes: String
+	gasSource: String
+	gasUsdFee: String
+	gas: GasInfo
+	treasuryAccountId: String!
+	treasuryBlockchainAccountId: String!
+	treasuryPositionAccountId: String!
+}
+type AddUsersToUserGroupDetails {
+	v: Int!
+	userGroup: UserGroup!
+	users: [User!]!
+}
+"""
+Immutable commercial terms for an Agent Credits purchase approval.
+"""
+type AgentCreditsPurchaseDetails {
+	v: Int!
+	entityId: String!
+	purchaseId: ID!
+	paymentAccountType: String!
+	paymentAccountId: ID!
+	paymentParentWalletId: ID
+	purchaseAmountMinor: String!
+	purchaseCurrency: String!
+	creditsMicrocredits: String!
+	creditPriceVersion: String!
+}
+type AnalysisSettledMovementConnection {
+	movements: [SettledMovement!]!
+	nextPageToken: String
+	dataAsOf: Time
+	"""
+	Decimal strings preserve Ledger's int64 snapshot watermarks exactly.
+	"""
+	balanceEntryIdWatermark: String!
+	priceVersionWatermark: String!
+	"""
+	Describes the filtered window: an excluded transaction never opens a gap.
+	"""
+	coverage: SettledMovementCoverage
+	includesTreasury: Boolean!
+	includesSpam: Boolean!
+	"""
+	The normalized selection, null means no transaction ID restriction.
+	"""
+	transactionIds: [ID!]
+	"""
+	Null means an older Ledger did not report this setting.
+	"""
+	excludesInternalActivity: Boolean
+	"""
+	Null means Ledger did not confirm small-balance capability for this session.
+	"""
+	excludesSmallBalances: Boolean
+	"""
+	Nullable exact int64 counts; absent support is unavailable, never zero.
+	"""
+	excludedSmallBalanceMovementCount: String
+	"""
+	Distinct unknown parents in the base-filtered window, including partials.
+	"""
+	unknownSmallBalanceParentCount: String
+	"""
+	Counts and coverage describe the same selected transaction/window scope.
+	Each excluded movement is counted once: Treasury, then internal, then spam, then small balance.
+	"""
+	excludedTreasuryMovementCount: String!
+	excludedInternalActivityMovementCount: String!
+	excludedSpamMovementCount: String!
+	"""
+	Page-local source transaction metadata, loaded only when selected.
+	Null means unavailable from Ledger, not zero fees. This is not a fee chain
+	or proof that the customer paid. Cross-page repeats must not be summed.
+	"""
+	transactionFeeContexts: TransactionFeeContexts
+}
+enum ApprovalDecision {
+	APPROVE
+	REJECT
+}
+type ApprovalDecisionRecord {
+	decision: ApprovalDecision!
+	reason: String
+	user: User
+	timestamp: Time
+}
+"""
+Details payload returned by conductor approval records (oneof).
+"""
+union ApprovalDetails = PolicyUpdateEditDetails | InvitationCreateDetails | InvitationCancelDetails | InvoiceActionDetails | EntityProfileUpdateDetails | WalletCreateDetails | WalletEditDetails | WalletDeleteDetails | SafeImportDetails | SendTransactionDetails | RemoveUserFromEntityDetails | AddUsersToUserGroupDetails | RemoveUserFromUserGroupDetails | SetUserRolesForEntityDetails | GasStationTopupDetails | GasStationWithdrawalDetails | CryptoCryptoConvertDetails | OneStepReceiveDetails | AddSmartBalanceDetails | WithdrawSmartBalanceDetails | CryptoTreasuryDepositDetails | CryptoTreasuryWithdrawDetails | BankingUsdWithdrawalDetails | BankingFiatWithdrawalDetails | ContractExecutionDetails | ContactCreateDetails | ContactUpdateProfileDetails | ContactDeleteDetails | ContactAddEmailsDetails | ContactRemoveEmailDetails | ContactAddBankAccountDetails | ContactUpdateBankAccountDetails | ContactRemoveBankAccountDetails | ContactAddChainAddressDetails | ContactUpdateChainAddressDetails | ContactRemoveChainAddressDetails | CardIssueDetails | CardUpdateStatusDetails | CardUpdateLimitDetails | CardUpdateAuthorizedPeriodDetails | CardDeactivateDetails | CardUpdatePinDetails | AgentCreditsPurchaseDetails
+"""
+Approval flows, tasks, and runtime state returned from reah-conductor.
+"""
+enum ApprovalDomain {
+	TRANSACTION
+	APPROVAL_FLOW
+	OWNER_CONTROLS
+	ENTITY
+	PERMISSION
+	ACCOUNT
+	BILLING
+}
+type ApprovalNode {
+	id: ID!
+	type: String
+	status: String
+	lastUpdatedAt: Time
+	startedAt: Time
+	slaHours: Int
+	consensus: NodeConsensus
+	assignees: UserGroup
+	approvals: [ApprovalDecisionRecord!]!
+	remainingApprovals: Int
+}
+enum ApprovalOperationType {
+	UNKNOWN
+	SEND
+	RECEIVE
+	CONVERT
+	APPROVAL_FLOW_CHANGE
+	ENTITY_CHANGE
+	PERMISSION_GROUP_CHANGE
+	ACCOUNT_CHANGE
+	CARD
+	OWNER_CHANGE
+	TOP_UP
+	WIITHDRAW
+}
+type ApprovalRecord {
+	id: ID!
+	"""
+	Human-readable identifier (e.g., "AP120125-1AB5")
+	"""
+	humanId: String!
+	status: ApprovalStatus!
+	domain: ApprovalDomain
+	"""
+	Legacy operation key (for example "wallet:create")
+	"""
+	type: String!
+	"""
+	Display category returned by conductor display_type
+	"""
+	displayType: ApprovalOperationType!
+	"""
+	Raw reason for rejection, cancellation, or execution failure when present
+	"""
+	statusReason: String
+	"""
+	User-facing execution failure explanation normalized to the Fail Reason catalog
+	"""
+	failureExplanation: TransactionFailureExplanation
+	initiator: User
+	initiatedAt: Time
+	currentNodeId: String
+	nextNodeId: String
+	execStartedAt: Time
+	rejectedBy: User
+	canceledBy: User
+	createdAt: Time!
+	updatedAt: Time!
+	completedAt: Time
+	canceledAt: Time
+}
+type ApprovalRecordConnection {
+	records: [ApprovalRecordDetail!]!
+	cursor: String
+}
+type ApprovalRecordDetail {
+	summary: ApprovalRecord!
+	details: ApprovalDetails
+	runtime: ApprovalRuntime
+	"""
+	Proactive wallet transaction-lock status: whether executing this approval
+	would currently be rejected with TRANSACTION_IN_PROGRESS, and what blocks
+	it. Always unlocked while the ledger's execution transaction lock feature
+	flag is disabled. Poll it to re-enable the Execute button when the
+	blocking transaction settles.
+	"""
+	transactionLockStatus: ApprovalTransactionLockStatus!
+}
+type ApprovalRuntime {
+	nodes: [ApprovalNode!]!
+}
+enum ApprovalStatus {
+	INITIALIZE
+	PENDING
+	APPROVED
+	PENDING_EXECUTION
+	PARTIAL_COMPLETED
+	COMPLETED
+	REJECTED
+	CANCELED
+	FAILED
+}
+type ApprovalTransactionLockStatus {
+	locked: Boolean!
+	"""
+	Set when an in-flight transaction blocks the wallet; link and poll it.
+	"""
+	blockingTransactionId: ID
+	blockingTransactionHumanId: String
+	"""
+	Transaction currently holding the wallet lock, when it has been ingested.
+	"""
+	blockingTransaction: Transaction
+	"""
+	Set when the holding approval is still signing (nothing on chain yet).
+	"""
+	holderApproveId: ID
+}
+"""
+A financial asset (e.g., USD, BTC, ETH, USDC)
+"""
+type Asset {
+	id: ID!
+	"""
+	Full name (e.g., "United States Dollar", "Bitcoin")
+	"""
+	name: String!
+	"""
+	Symbol or ticker (e.g., "USD", "BTC", "ETH")
+	"""
+	symbol: String!
+	"""
+	Whether this is a fiat currency
+	"""
+	fiat: Boolean!
+	"""
+	Default decimal places for this asset
+	"""
+	defaultDecimals: Int!
+	"""
+	Logo image URL
+	"""
+	logoUrl: String
+	"""
+	Latest USD price for this asset
+	"""
+	latestPrice: AssetPrice
+}
+"""
+Paginated assets
+"""
+type AssetConnection {
+	assets: [Asset!]!
+	cursor: String
+}
+"""
+Current price information for an asset
+"""
+type AssetPrice {
+	"""
+	Timestamp when this price was recorded
+	"""
+	priceTimestamp: Time!
+	"""
+	USD price of the asset
+	"""
+	usdPrice: String!
+}
+"""
+Backend provider for wallets and accounts
+"""
+enum Backend {
+	UNKNOWN
+	TURNKEY
+	SAFE
+	CONDUIT
+}
+"""
+A balance for an owner at a specific aggregation level
+"""
+type Balance {
+	"""
+	Who owns this balance
+	"""
+	owner: BalanceOwner!
+	"""
+	How this balance is aggregated (by asset, network, instrument, or total)
+	"""
+	aggregation: BalanceAggregation!
+	"""
+	Amount in the native unit (e.g., "1.5" for 1.5 ETH, null for total/network aggregations)
+	"""
+	nativeAmount: String
+	"""
+	USD equivalent amount
+	"""
+	usdAmount: String!
+	"""
+	Timestamp of the price data used for USD conversion
+	"""
+	priceVersion: Time
+}
+"""
+How a balance is aggregated
+"""
+union BalanceAggregation = Asset | Network | Instrument | Total
+enum BalanceBucket {
+	WALLET
+	SMART_BALANCE
+	UNKNOWN
+}
+"""
+Paginated balances
+"""
+type BalanceConnection {
+	balances: [Balance!]!
+	cursor: String
+}
+"""
+What owns this balance
+"""
+union BalanceOwner = Entity | Wallet | BlockchainAccount | InstrumentAccount | BankingAccount | TreasuryAccount | CardAccount | TreasuryPositionAccount
+"""
+Balance bucket used as the source of a Send or Convert operation.
+"""
+enum BalanceSource {
+	WALLET
+	SMART_BALANCE
+}
+"""
+A traditional banking account (e.g., ACH, wire transfer)
+"""
+type BankingAccount {
+	id: ID!
+	"""
+	Human-readable identifier (e.g., "B-001")
+	"""
+	humanId: String!
+	"""
+	The entity that owns this account
+	"""
+	entity: Entity!
+	"""
+	Display name for the account
+	"""
+	name: String!
+	"""
+	The backend provider managing this account
+	"""
+	backend: Backend!
+	"""
+	Raw banking provider identifier (for example, seismic or dakota).
+	"""
+	provider: String!
+	"""
+	External reference ID in the backend system
+	"""
+	backendRef: String!
+	"""
+	The instrument (usually a fiat currency like USD)
+	"""
+	instrument: Instrument!
+	"""
+	Bank account number
+	"""
+	accountNumber: String!
+	"""
+	Bank routing number
+	"""
+	routingNumber: String!
+	"""
+	Current account state from ledger provisioning lifecycle.
+	"""
+	state: BankingAccountState!
+	"""
+	Structured banking account metadata such as settlement and rail details.
+	"""
+	details: BankingAccountDetails
+	"""
+	Whether Seismic bank-rail payins are disabled for this account.
+	"""
+	payinDisabled: Boolean!
+	"""
+	Whether Seismic bank-rail payouts are disabled for this account.
+	"""
+	payoutDisabled: Boolean!
+	"""
+	Explicitly available payout currencies reported by Ledger.
+	"""
+	availablePayoutCurrency: [String!]!
+	payoutRoutes: [BankingPayoutRoute!]!
+	"""
+	Current balance
+	"""
+	totalBalance: Balance!
+	"""
+	Banking balance split by what each flow may spend: bank transfer and card
+	deposit (availableAmountMinor) and banking -> crypto convert
+	(convertibleAmountMinor). The field name predates the convert ceiling.
+	"""
+	bankTransferAvailability: BankingFundAvailability!
+	"""
+	Transaction history for this banking account
+	"""
+	transactions(first: Int, after: String, state: String): TransactionConnection!
+	"""
+	Historical USD balance over time for this banking account
+	"""
+	historicalBalance(lastDays: Int!): HistoricalBalance!
+}
+type BankingAccountDetail {
+	status: BankingDetailStatus!
+	repairRequired: Boolean!
+	pendingAction: BankingPendingAction
+	bankingAccount: BankingAccount
+}
+type BankingAccountDetails {
+	settlement: BankingSettlementInfo
+	onramp: BankingOnrampDetails
+}
+enum BankingAccountState {
+	UNKNOWN
+	PENDING_PROVISIONING
+	ACTIVE
+}
+"""
+Holding-period details for a banking deposit.
+"""
+type BankingDepositAvailability {
+	"""
+	Whether holding-period enforcement is active for bank withdrawal.
+	"""
+	enforced: Boolean!
+	bankingAccountId: ID!
+	instrumentId: ID!
+	currency: String!
+	currencyScale: Int!
+	amountMinor: String!
+	holdStartedAt: Time!
+	availableAt: Time!
+	availableForBankWithdrawal: Boolean!
+}
+type BankingDepositRail {
+	routingNumber: String
+	accountNumber: String
+	accountHolderName: String
+	accountType: String
+	bankName: String
+}
+type BankingDestinationBankAddress {
+	street1: String!
+	street2: String
+	street3: String
+	city: String!
+	region: String!
+	postalCode: String!
+	country: String!
+}
+enum BankingDetailStatus {
+	UNKNOWN
+	NOT_ENABLED
+	SETTLEMENT_MISSING
+	PENDING_PROVISIONING
+	ACTIVE
+}
+enum BankingFiatRail {
+	ACH
+	WIRE
+	SWIFT
+	SEPA
+	FPS
+	BACS
+	NPSS
+	CNAPS
+	FAST
+	MEPS
+	"""
+	United Kingdom CHAPS, the high-value same-day rail alongside `FPS` and `BACS`.
+
+	Unlike `ECG` and `CHATS` below, this is **not** visibility-only. GBP/chaps is
+	transactable end-to-end in Ledger: it is admitted by the withdrawal rail
+	allowlist (`normalizeBankingFiatWithdrawalRail`), maps to Seismic through
+	`seismicRailFromFiatWithdrawalRail`, maps the `gbp_chaps` monetization fee
+	target, and is accepted by contact bank account validation on the same terms
+	as the other two UK rails (8-digit account number, 6-digit sort code). It was
+	unreachable only because this enum had no member for it, so
+	`requestBankingFiatWithdraw` and the estimate queries could not name the
+	corridor.
+	"""
+	CHAPS
+	"""
+	Hong Kong ECG. Visibility only: it appears in the Ledger rail limitation
+	catalog and can be stored on a contact bank account, but it is not in Ledger's
+	withdrawal rail allowlist, so `requestBankingFiatWithdraw`,
+	`estimateBankingFiatRailFee` and both `estimateBankingFiatOfframp*` queries
+	fail with `INVALID_ARGUMENT` before fee resolution is ever reached.
+
+	The rail becomes usable only once Ledger admits it in
+	`normalizeBankingFiatWithdrawalRail` and `seismicRailFromFiatWithdrawalRail`
+	**and** maps an `hkd_ecg` monetization fee target — the fee target alone is
+	not enough. Do not offer it as a selectable withdrawal rail before then.
+	"""
+	ECG
+	"""
+	Hong Kong CHATS. Visibility only, on the same terms as `ECG`: catalog and
+	contact storage today, rejected at Ledger's withdrawal rail allowlist until
+	Ledger admits `chats` there and maps an `hkd_chats` fee target.
+	"""
+	CHATS
+}
+enum BankingFiatWithdrawalAmountMode {
+	EXACT_IN
+	EXACT_OUT
+}
+type BankingFiatWithdrawalDetails {
+	v: Int!
+	bankingAccountId: String!
+	amountMinor: String!
+	currency: String!
+	currencyScale: Int!
+	settlementAddress: String
+	rail: String!
+	contact: Contact
+	destinationName: String!
+	accountNumber: String!
+	routingNumber: String
+	iban: String
+	bic: String
+	sortCode: String
+	cnapsCode: String
+	idNumber: String
+	phone: String
+	vpa: String
+	accountType: String
+	accountHolderName: String!
+	bankName: String!
+	bankAddress: BankingDestinationBankAddress
+	accountHolderAddress: BankingDestinationBankAddress
+	notes: String
+	recipientEmail: String
+	paymentReason: BankingPaymentReason
+	usdAmountMinor: String
+	receivedFiatCurrency: String
+	receivedFiatCurrencyScale: Int
+	minReceivedFiatAmountMinor: String
+	estimatedReceivedFiatAmountMinor: String
+	invoice: BankingFiatWithdrawalInvoice
+	"""
+	Non-null exactly when this withdrawal is funded directly from the user's
+	wallet rather than the Banking settlement wallet. Presence alone is the
+	mode discriminator, mirroring the producer contract; null means the legacy
+	Banking-funded route.
+	"""
+	directFunding: BankingFiatWithdrawalDirectFunding
+	amountMode: BankingFiatWithdrawalAmountMode
+	exactReceivedFiatAmountMinor: String
+	maxUsdAmountMinor: String
+	estimatedUsdAmountMinor: String
+	estimatedInUsdAmountMinor: String
+	railFeeAmountMinor: String
+}
+"""
+Approved source and destination terms for the direct Wallet -> Seismic funding
+route. The producer must populate every member; a null member on a non-null
+BankingFiatWithdrawalDirectFunding is a broken record, and consumers must fail
+closed rather than rendering the withdrawal as if the member were absent.
+"""
+type BankingFiatWithdrawalDirectFunding {
+	"""
+	Wallet instrument account debited for this withdrawal.
+	"""
+	originInstrumentAccountId: ID
+	originInstrumentAccount: InstrumentAccount
+	"""
+	Exact approved debit in the source instrument's SMALLEST units (e.g. 6
+	decimals for USDC/USDT), not standard units. Note this differs from
+	CryptoTreasuryDepositDetails.sourceAmount, which is standard units.
+	"""
+	sourceAmount: String
+	sourceAsset: String
+	sourceNetwork: String
+	gasSource: String
+	seismicQuoteSnapshotId: String
+	seismicOrderId: String
+	seismicFundingAddress: String
+	seismicFundingCurrency: String
+	seismicFundingChain: String
+	"""
+	Gas estimate and payer attribution. On this route the wallet pays gas and
+	it is the user's cost, so it must be shown to the approver.
+	"""
+	gas: GasInfo
+}
+"""
+Invoice metadata persisted with a banking fiat withdrawal approval.
+Use createBankingFiatWithdrawalInvoiceDownloadUrl to obtain a short-lived URL.
+"""
+type BankingFiatWithdrawalInvoice {
+	id: ID!
+	name: String!
+	contentType: String!
+	sizeBytes: Int!
+	uploadedAt: Time
+	uploadedByUserId: ID
+}
+"""
+Banking balance availability by eligibility: what a bank withdrawal or card
+deposit may spend, and what a banking -> crypto convert may spend. The two
+differ, so read the field that matches the flow being sized.
+"""
+type BankingFundAvailability {
+	"""
+	Whether holding-period enforcement is active for this account.
+	"""
+	enforced: Boolean!
+	currency: String!
+	currencyScale: Int!
+	availableAmountMinor: String!
+	onHoldAmountMinor: String!
+	processingAmountMinor: String!
+	"""
+	What an `any`-eligibility flow may spend right now: a banking → crypto
+	convert, or a Banking-funded Treasury deposit.
+
+	**Size those inputs from this, not from availableAmountMinor +
+	onHoldAmountMinor.** A convert may reach an ordinary deposit hold but never a
+	scheduled-convert credit, which is the collateral funding its own fee
+	discount, and funds already committed to another in-flight transaction have
+	left the balance entirely. Offering the wider figure offers money no
+	reservation can take: the request is accepted, approvers sign it, and it
+	fails at execution.
+
+	availableAmountMinor remains the ceiling for bank transfers and card
+	deposits. Only the convert rejects an over-limit amount at request time — a
+	Banking-funded Treasury deposit still reserves at execution, so do not read
+	this as evidence that flow is guarded.
+
+	**Null means the ledger serving this request does not report it** (any build
+	before the field existed), not that nothing is convertible. Fall back to
+	availableAmountMinor, which is always less than or equal to this value and so
+	cannot over-offer.
+
+	When `enforced` is false the projection is not binding — nothing is rejected
+	for exceeding this — so treat it as advisory there rather than as a cap.
+	"""
+	convertibleAmountMinor: String
+	"""
+	The part of onHoldAmountMinor that is scheduled-convert collateral, locked
+	until its delivery date rather than merely inside a deposit hold. Held funds
+	outside this slice ARE convertible to crypto, so copy that tells a customer
+	what they can still do with held funds must distinguish the two.
+
+	Null means the ledger serving this request does not report it; treat the hold
+	breakdown as unavailable rather than assuming zero collateral, or the copy
+	reverts to the claim this field exists to correct.
+	"""
+	scheduledHeldAmountMinor: String
+	asOf: Time!
+	nextRelease: BankingFundNextRelease
+}
+"""
+The first held amount scheduled to become available for bank transfer.
+"""
+type BankingFundNextRelease {
+	amountMinor: String!
+	availableAt: Time!
+}
+type BankingOnrampAccount {
+	currency: String!
+	rails: [BankingFiatRail!]!
+	details: BankingOnrampAccountDetails
+}
+type BankingOnrampAccountDetails {
+	accountHolderName: String
+	accountHolderAddressLine1: String
+	accountHolderAddressLine2: String
+	accountHolderAddressLine3: String
+	accountHolderCity: String
+	accountHolderStateRegion: String
+	accountHolderPostCode: String
+	accountHolderCountry: String
+	accountNumber: String
+	routingNumber: String
+	accountType: String
+	bankName: String
+	bankAddressLine1: String
+	bankAddressLine2: String
+	bankCity: String
+	bankStateRegion: String
+	bankPostCode: String
+	bankCountry: String
+	iban: String
+	swiftBic: String
+}
+type BankingOnrampDetails {
+	ach: BankingDepositRail
+	fedwire: BankingDepositRail
+	accounts: [BankingOnrampAccount!]!
+}
+enum BankingPaymentReason {
+	CHARITABLE_CONTRIBUTIONS
+	EDUCATION_FEES
+	EMPLOYEE_SALARIES_OR_WAGES
+	GIFTS
+	INVESTMENTS
+	PURCHASE_OF_GOODS
+	PURCHASE_OF_SERVICES
+	PERSONAL_TRANSFERS
+	RENT
+	LOANS
+	UTILITY_BILLS
+	FAMILY_SUPPORT
+	FRIENDS_SUPPORT
+	REAL_ESTATE
+	INSURANCE
+	INTERCOMPANY_TRANSFER
+	TAXES
+	TRAVEL
+}
+type BankingPayoutRoute {
+	"""
+	ISO 4217, uppercase.
+	"""
+	currency: String!
+	rail: BankingFiatRail!
+	available: Boolean!
+	"""
+	Null when `available` is true.
+	"""
+	unavailableReason: BankingPayoutRouteUnavailableReason
+	"""
+	The provider that will carry a payout on this route, lowercase, in the same
+	vocabulary as `BankingAccount.provider` (for example `seismic`, `dakota`).
+
+	Null when `available` is false, because an unavailable route has no carrier.
+
+	Read this rather than deriving it. It decides which provider's recipient
+	contract a route requires -- Seismic's holder-address recipe, and the date
+	of birth an individual recipient needs -- and
+	`requestBankingFiatWithdraw` freezes its approval against the same
+	provider, so a surface that guesses wrong signs an approval the provider
+	then refuses. `BankingAccount.provider` is not a substitute: a route
+	override is resolved ahead of the account default. Nor is the rail: both
+	providers serve every USD rail, so a USD route moved to a linked provider
+	is indistinguishable from the default one without this field.
+
+	It is per route, not per account: one currency's rails can be carried by
+	different providers at once.
+	"""
+	provider: String
+}
+"""
+Why a route is not available.
+
+Deliberately product-level. Which provider would carry a route, and whether
+the rail-routing and bridged-payout rollout flags are on, are operator facts
+that stay in the Ledger admin surface: "no second provider is linked", "rail
+routing is off" and "bridged payouts are off" all arrive here as
+`RAIL_NOT_AVAILABLE`.
+"""
+enum BankingPayoutRouteUnavailableReason {
+	"""
+	The Banking Account is not active, so it cannot pay out at all. Read
+	`state` for which stage it is in.
+	"""
+	ACCOUNT_NOT_ACTIVE
+	"""
+	Payouts in this currency are not enabled on the account.
+	"""
+	CURRENCY_NOT_ENABLED
+	"""
+	No provider available to this account can carry this currency over this
+	rail today.
+	"""
+	RAIL_NOT_AVAILABLE
+	"""
+	Ledger reported a reason this gateway version does not know. Treat the
+	route as unavailable without explaining why; do not infer a cause.
+	"""
+	UNKNOWN
+}
+enum BankingPendingAction {
+	UNKNOWN
+	CREATE_SETTLEMENT_WALLET
+	ENSURE_BANKING_PROVISIONED
+	BACKFILL_BANKING_INGRESS
+}
+type BankingSettlementInfo {
+	address: String!
+	networkId: ID
+	instrumentId: ID
+	"""
+	The settlement instrument itself, so a client can bind a Banking-funded
+	fiat withdrawal's paying side (address, CAIP-19 asset from the instrument's
+	network and contract, amount in the instrument's smallest units) without a
+	second lookup.
+	"""
+	instrument: Instrument
+}
+enum BankingUsdRail {
+	ACH
+	FEDWIRE
+}
+type BankingUsdWithdrawalDetails {
+	v: Int!
+	bankingAccountId: String!
+	amount: String!
+	rail: String!
+	contact: Contact
+	destinationName: String!
+	abaRoutingNumber: String!
+	accountNumber: String!
+	accountType: String!
+	accountHolderName: String!
+	bankName: String!
+	bankAddress: BankingDestinationBankAddress
+	accountHolderAddress: BankingDestinationBankAddress
+	notes: String
+	recipientEmail: String
+}
+"""
+Provider execution-window metadata for a Banking withdrawal. The same shape
+is returned by previews and persisted on created transactions.
+"""
+type BankingWithdrawalExecutionSchedule {
+	status: String!
+	scheduled: Boolean!
+	provider: String!
+	currency: String!
+	rail: String!
+	region: String!
+	cutoff: String!
+	timezone: String!
+	location: String!
+	reason: String!
+	policyVersion: String!
+	scheduledAt: Time
+	scheduledFor: Time
+	updatedAt: Time
+}
+"""
+A blockchain account on a specific network (e.g., Ethereum mainnet, Polygon)
+"""
+type BlockchainAccount {
+	id: ID!
+	"""
+	The entity that owns this account
+	"""
+	entity: Entity!
+	"""
+	The wallet this account belongs to
+	"""
+	wallet: Wallet!
+	"""
+	The blockchain network for this account
+	"""
+	network: Network!
+	"""
+	The backend provider managing this account
+	"""
+	backend: Backend!
+	"""
+	External reference ID in the backend system
+	"""
+	backendRef: String!
+	createdAt: Time!
+	"""
+	The blockchain address (e.g., 0x...)
+	"""
+	address: String!
+	"""
+	All instrument accounts (specific tokens/coins) in this blockchain account
+	"""
+	instrumentAccounts: [InstrumentAccount!]!
+	"""
+	Total balance across all instruments in USD
+	"""
+	totalBalance: Balance!
+	"""
+	Balance aggregated by asset
+	"""
+	assetBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Balance aggregated by instrument
+	"""
+	instrumentBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Transaction history for this blockchain account
+	"""
+	transactions(first: Int, after: String): TransactionConnection!
+	"""
+	Pending Safe (multi-sig) transactions that reference this blockchain account.
+	"""
+	safeTransactions(first: Int, after: String): PendingSafeTransactionConnection!
+}
+type Card {
+	id: ID!
+	entityId: ID!
+	cardholderId: ID!
+	provider: CardProvider!
+	providerCompanyId: String!
+	providerCardId: String!
+	requestId: String!
+	type: CardType!
+	status: CardStatus!
+	nickname: String!
+	cardDisplayName: String!
+	last4: String!
+	expirationMonth: String!
+	expirationYear: String!
+	limitAmountMinor: String!
+	limitFrequency: CardLimitFrequency!
+	billingAddress: CardBillingAddress!
+	spentThisMonth: CardSpendSummary!
+	cardholder: Cardholder
+	cardDetail: CardDetail
+	authorizedPeriodStartAt: Time
+	authorizedPeriodEndAt: Time
+	createdAt: Time!
+	updatedAt: Time!
+}
+"""
+Card account owner
+"""
+type CardAccount {
+	id: ID!
+	entityId: ID!
+	entity: Entity!
+	totalBalance: Balance!
+	totalSpend(lastDays: Int!): String!
+	historicalBalance(lastDays: Int!): HistoricalBalance!
+	cardholders(provider: CardProvider = CARD_PROVIDER_RAIN, first: Int, after: String): CardholderConnection!
+	cards(provider: CardProvider = CARD_PROVIDER_RAIN, cardholderId: ID, first: Int, after: String, statuses: [CardStatus!]): CardConnection!
+	card(cardId: ID!): Card
+	cardMetaOptions: CardMetaOptions!
+	cardTransactions(first: Int, after: String): CardTransactionConnection!
+	cardTransaction(transactionId: ID!): CardTransaction
+}
+type CardBillingAddress {
+	line1: String!
+	line2: String!
+	city: String!
+	state: String!
+	postalCode: String!
+	country: String!
+}
+type CardConnection {
+	cards: [Card!]!
+	cursor: String
+}
+type CardDeactivateDetails {
+	v: Int!
+	entityId: String!
+	cardId: String!
+}
+type CardDetail {
+	card: Card!
+	cardholder: Cardholder
+	cardholderName: String!
+	cardholderEmail: String!
+	"""
+	The phone Reah has on record for this cardholder, as a single E.164 string.
+	This is the cardholder's own phone, which can differ from their user profile
+	phone. Empty when none has been captured.
+
+	It is the user's intent, NOT confirmed provider state: it is sent to the card
+	provider but may not be applied there yet. Do not present it as the number
+	the provider will use. See CardDetail.cardholder_phone in reah-ledger for the
+	ways it can lead the provider.
+
+	Readable only with wallet_account:view, so a cardholder cannot read their own
+	value back through this field — see the note on updateCardholderPhone.
+	"""
+	cardholderPhone: String!
+	expirationDate: String!
+	billingAddressDisplay: String!
+	limit: CardDetailLimit!
+}
+type CardDetailLimit {
+	limitAmountMinor: String!
+	limitFrequency: CardLimitFrequency!
+	spentAmountMinor: String!
+	availableAmountMinor: String!
+}
+type CardIssueDetails {
+	v: Int!
+	entityId: String!
+	userId: String!
+	firstName: String
+	lastName: String
+	provider: String!
+	providerCompanyId: String
+	requestId: String
+	expirationMonth: String
+	expirationYear: String
+	nickname: String
+	cardType: String
+	limitAmountMinor: String
+	limitFrequency: String
+	"""
+	Populated only by card:purchase_and_issue. These are the signed approval
+	details; the execution-time charge may differ because Ledger re-reads the
+	current Plan price after approval.
+	"""
+	paymentAccountType: String
+	paymentAccountId: ID
+	paymentParentWalletId: ID
+	paymentAccountDisplayName: String
+	purchaseReferenceAmountMinor: String
+	purchaseReferenceCurrency: String
+}
+enum CardLimitFrequency {
+	CARD_LIMIT_FREQUENCY_UNSPECIFIED
+	CARD_LIMIT_FREQUENCY_PER_24_HOUR
+	CARD_LIMIT_FREQUENCY_PER_7_DAY
+	CARD_LIMIT_FREQUENCY_PER_30_DAY
+	CARD_LIMIT_FREQUENCY_PER_YEAR
+	CARD_LIMIT_FREQUENCY_ALL_TIME
+}
+type CardLimitFrequencyOption {
+	frequency: CardLimitFrequency!
+	label: String!
+}
+type CardMetaOptions {
+	statusOptions: [CardStatusOption!]!
+	limitFrequencyOptions: [CardLimitFrequencyOption!]!
+}
+"""
+Cards
+"""
+enum CardProvider {
+	CARD_PROVIDER_UNSPECIFIED
+	CARD_PROVIDER_RAIN
+}
+type CardQuotaPurchaseCard {
+	userId: ID!
+	provider: CardProvider!
+	providerCompanyId: String
+	nickname: String
+	type: CardType!
+	limitAmountMinor: String!
+	limitFrequency: CardLimitFrequency!
+}
+type CardQuotaPurchaseOrder {
+	id: ID!
+	entityId: ID!
+	status: CardQuotaPurchaseOrderStatus!
+	"""
+	User-readable reason for a terminal or review-required state. Ledger's
+	internal failure code remains an operational detail.
+	"""
+	statusReason: String
+	quantity: Int!
+	"""
+	These fields are the execution-time values persisted by Ledger.
+	"""
+	unitPriceAmountMinor: String!
+	totalAmountMinor: String!
+	currency: String!
+	"""
+	Effective Card quota immediately before/after this purchase was granted.
+	Populated together only after a successful quota grant. Both are null before
+	grant or when no persisted snapshot is available. Null means unknown, not
+	unchanged.
+	"""
+	quotaBefore: Int
+	quotaAfter: Int
+	payment: CardQuotaPurchasePaymentSnapshot!
+	card: CardQuotaPurchaseCard!
+	paymentIntentId: ID
+	approvalId: ID
+	cardId: ID
+	createdAt: Time!
+	updatedAt: Time!
+	completedAt: Time
+}
+enum CardQuotaPurchaseOrderStatus {
+	UNSPECIFIED
+	PAYMENT_EXECUTING
+	PAYMENT_CONFIRMING
+	QUOTA_GRANTING
+	CARD_ISSUING
+	COMPLETED
+	FAILED
+	PARTIAL_COMPLETED
+	REQUIRES_REVIEW
+}
+type CardQuotaPurchasePaymentSnapshot {
+	sourceType: CardQuotaPurchasePaymentSourceType!
+	sourceAccountId: ID!
+}
+"""
+A paid Card request authorizes one permanent Card quota purchase and one Card
+issuance in a single approval. No Order or price lock exists before approval
+execution. Ledger creates the Order and reads the current Plan price when the
+approved execution starts.
+"""
+enum CardQuotaPurchasePaymentSourceType {
+	UNSPECIFIED
+	WALLET
+	BANKING_ACCOUNT
+	CARD_ACCOUNT
+}
+type CardSpendSummary {
+	spentAmountMinor: String!
+	currency: String!
+}
+type CardSpendingSeries {
+	points: [CardSpendingSeriesPoint!]!
+	totalSpentAmountMinor: String!
+	transactionCount: Int!
+	startAt: Time!
+	endAt: Time!
+	currency: String!
+	availableAmountMinor: String!
+	cardCount: Int!
+}
+type CardSpendingSeriesPoint {
+	date: String!
+	spentAmountMinor: String!
+	transactionCount: Int!
+}
+enum CardStatus {
+	CARD_STATUS_UNSPECIFIED
+	CARD_STATUS_ISSUING_PENDING
+	CARD_STATUS_ISSUING_WAITING_KYC
+	CARD_STATUS_ISSUING_WAITING_TERMS
+	CARD_STATUS_ISSUING_PROVIDER_CREATING
+	CARD_STATUS_ACTIVE
+	CARD_STATUS_LOCKED
+	CARD_STATUS_DEACTIVATED
+	CARD_STATUS_ISSUING_FAILED
+	CARD_STATUS_CANCELED
+	CARD_STATUS_NOT_ACTIVATED
+	CARD_STATUS_ISSUANCE_PAYMENT_PENDING
+}
+type CardStatusOption {
+	status: CardStatus!
+	label: String!
+}
+type CardTransaction {
+	transactionId: ID!
+	merchantName: String!
+	amountMinor: String!
+	currency: String!
+	transactionType: CardTransactionType!
+	uiStatus: CardTransactionUIStatus!
+	initiatedAt: Time!
+	humanId: String!
+	cardId: ID!
+	notes: String!
+	tags: [TransactionTag!]!
+	attachments: [CardTransactionAttachment!]!
+}
+type CardTransactionAttachment {
+	id: ID!
+	name: String!
+	url: String!
+	contentType: String!
+}
+type CardTransactionConnection {
+	transactions: [CardTransaction!]!
+	cursor: String
+}
+enum CardTransactionType {
+	UNKNOWN
+	SPEND
+	DEPOSIT
+	WITHDRAW
+}
+enum CardTransactionUIStatus {
+	CARD_TRANSACTION_UI_STATUS_UNSPECIFIED
+	CARD_TRANSACTION_UI_STATUS_PROCESSING
+	CARD_TRANSACTION_UI_STATUS_COMPLETED
+	CARD_TRANSACTION_UI_STATUS_FAILED
+}
+enum CardType {
+	CARD_TYPE_UNSPECIFIED
+	CARD_TYPE_VIRTUAL
+	CARD_TYPE_PHYSICAL
+}
+type CardUpdateAuthorizedPeriodDetails {
+	v: Int!
+	entityId: String!
+	cardId: String!
+	startAt: Time
+	endAt: Time
+}
+type CardUpdateLimitDetails {
+	v: Int!
+	entityId: String!
+	cardId: String!
+	limitAmountMinor: String!
+	limitFrequency: String
+}
+type CardUpdatePinDetails {
+	v: Int!
+	entityId: String!
+	cardId: String!
+	pinRef: String
+}
+type CardUpdateStatusDetails {
+	v: Int!
+	entityId: String!
+	cardId: String!
+	targetStatus: String!
+}
+type Cardholder {
+	id: ID!
+	entityId: ID!
+	userId: ID!
+	provider: CardProvider!
+	providerCompanyId: String!
+	providerUserId: String!
+	kycStatus: String!
+	kycActionUrl: String!
+	cards(provider: CardProvider = CARD_PROVIDER_RAIN, first: Int, after: String, statuses: [CardStatus!]): CardConnection!
+	cardholderKYCForm: CardholderKYCForm
+	createdAt: Time!
+	updatedAt: Time!
+}
+type CardholderConnection {
+	cardholders: [Cardholder!]!
+	cursor: String
+}
+type CardholderKYCForm {
+	cardholder: Cardholder
+	requiredFields: [String!]!
+	hasSubmitted: Boolean!
+}
+"""
+A contact belonging to an entity.
+"""
+type Contact {
+	id: ID!
+	entity: Entity!
+	name: String!
+	type: ContactType!
+	createdAt: Time!
+	tags: [ContactTag!]!
+	emails: [ContactEmail!]!
+	bankAccounts: [ContactBankAccount!]!
+	chainAddresses: [ContactChainAddress!]!
+	transactions(first: Int, after: String): TransactionConnection!
+	filterTransactions(first: Int, after: String, filters: [SearchFilterInput!]): TransactionConnection!
+}
+type ContactAddBankAccountDetails {
+	contactId: ID!
+	bankAccount: ContactBankAccountItem!
+}
+type ContactAddChainAddressDetails {
+	contactId: ID!
+	networkId: ID
+	networkIds: [ID!]!
+	networks: [Network!]!
+	address: String!
+	label: String
+	sourceTransactionId: ID
+}
+type ContactAddEmailsDetails {
+	contactId: ID!
+	emails: [ContactEmailItem!]!
+}
+"""
+Bank account associated with a contact.
+"""
+type ContactBankAccount {
+	id: ID!
+	bankName: String!
+	accountHolder: String!
+	accountNumber: String
+	routing: String
+	swift: String
+	country: String!
+	currency: String
+	accountType: String
+	registrationId: String
+	legalAddress: String
+	bankStreetAddress: String
+	bankStreetAddressLine2: String
+	bankCity: String
+	bankStateRegion: String
+	bankPostCode: String
+	accountHolderStreetAddress: String
+	accountHolderStreetAddressLine2: String
+	accountHolderCity: String
+	accountHolderStateRegion: String
+	accountHolderPostCode: String
+	accountHolderCountry: String
+	accountHolderFirstName: String
+	accountHolderLastName: String
+	phone: String
+	taxNumber: String
+	accountHolderDateOfBirth: String
+	relationship: String
+	partyType: String
+	"""
+	Optional six-digit business account holder NAICS industry code.
+	"""
+	accountHolderNaicsCode: String
+	rails: ContactBankAccountRails
+	createdAt: Time!
+}
+type ContactBankAccountItem {
+	bankName: String!
+	accountHolder: String!
+	accountNumber: String
+	routing: String
+	swift: String
+	country: String!
+	currency: String
+	accountType: String
+	registrationId: String
+	legalAddress: String
+	bankStreetAddress: String
+	bankStreetAddressLine2: String
+	bankCity: String
+	bankStateRegion: String
+	bankPostCode: String
+	accountHolderStreetAddress: String
+	accountHolderStreetAddressLine2: String
+	accountHolderCity: String
+	accountHolderStateRegion: String
+	accountHolderPostCode: String
+	accountHolderCountry: String
+	accountHolderFirstName: String
+	accountHolderLastName: String
+	phone: String
+	taxNumber: String
+	accountHolderDateOfBirth: String
+	relationship: String
+	partyType: String
+	"""
+	Optional six-digit business account holder NAICS industry code.
+	"""
+	accountHolderNaicsCode: String
+	rails: ContactBankAccountRails
+}
+type ContactBankAccountRail {
+	abaRoutingNumber: String
+	accountNumber: String
+	accountType: String
+}
+type ContactBankAccountRailDetails {
+	rail: BankingFiatRail!
+	accountNumber: String
+	routingNumber: String
+	iban: String
+	sortCode: String
+	bic: String
+	cnapsCode: String
+	idNumber: String
+	phone: String
+	vpa: String
+	accountType: String
+	intermediaryBic: String
+}
+type ContactBankAccountRails {
+	ach: ContactBankAccountRail
+	wire: ContactBankAccountRail
+	items: [ContactBankAccountRailDetails!]
+}
+"""
+Blockchain address associated with a contact.
+"""
+type ContactChainAddress {
+	id: ID!
+	network: Network!
+	address: String!
+	label: String
+	createdAt: Time!
+	security: OnchainSecurityStatus
+}
+type ContactChainAddressSnapshot {
+	chainAddressId: ID!
+	networkId: ID!
+	network: Network
+	address: String!
+	label: String
+}
+"""
+Paginated contact results.
+"""
+type ContactConnection {
+	contacts: [Contact!]!
+	cursor: String
+}
+type ContactCreateDetails {
+	profile: ContactProfile!
+	email: String
+}
+type ContactDeleteDetails {
+	contactId: ID!
+	name: String
+}
+"""
+Email address associated with a contact.
+"""
+type ContactEmail {
+	id: ID!
+	email: String!
+	createdAt: Time!
+}
+type ContactEmailItem {
+	email: String!
+}
+"""
+Contact detail payloads used by approval records.
+"""
+type ContactProfile {
+	name: String!
+	type: ContactType!
+	tagNames: [String!]
+}
+type ContactRemoveBankAccountDetails {
+	contactId: ID!
+	bankAccountId: ID!
+}
+type ContactRemoveChainAddressDetails {
+	contactId: ID!
+	chainAddressId: ID!
+	chainAddressIds: [ID!]!
+	chainAddresses: [ContactChainAddressSnapshot!]!
+}
+type ContactRemoveEmailDetails {
+	contactId: ID!
+	emailId: ID!
+}
+"""
+Contact tag scoped to an entity.
+"""
+type ContactTag {
+	id: ID!
+	entity: Entity!
+	name: String!
+}
+"""
+Contact types and related metadata.
+"""
+enum ContactType {
+	UNSPECIFIED
+	BUSINESS
+	INDIVIDUAL
+}
+type ContactUpdateBankAccountDetails {
+	contactId: ID!
+	bankAccountId: ID!
+	bankAccount: ContactBankAccountItem!
+}
+type ContactUpdateChainAddressDetails {
+	contactId: ID!
+	chainAddressId: ID!
+	chainAddressIds: [ID!]!
+	networkId: ID
+	networkIds: [ID!]!
+	networks: [Network!]!
+	address: String!
+	label: String
+	sourceTransactionId: ID
+}
+type ContactUpdateProfileDetails {
+	contactId: ID!
+	profile: ContactProfile!
+	oldName: String
+	newName: String
+	addedTagNames: [String!]
+	removedTagNames: [String!]
+}
+type ContractArgument {
+	name: String!
+	type: String!
+	valueJson: String!
+	displayValue: String!
+}
+"""
+The canonical executable inputs are chainId, signerAddress, targetAddress,
+value, and calldata. A consumer must treat a missing or unparseable input as
+unverifiable; in particular, chainId "0", an empty value, and empty calldata
+are unset rather than valid canonical inputs (zero value is "0" and no
+calldata is "0x").
+
+Every other field is producer-set display or audit context. Approval clients
+must independently decode calldata with an independently obtained ABI and
+cross-check any producer-set description before presenting it as verified.
+"""
+type ContractExecutionDetails {
+	v: Int!
+	networkId: ID!
+	chainId: String!
+	chainName: String!
+	"""
+	Resolve this trusted Ledger identifier and cross-check that both the signer
+	address and wallet ID agree; any mismatch is unverifiable.
+	"""
+	blockchainAccountId: ID!
+	walletId: ID
+	signerAddress: String!
+	targetAddress: String!
+	targetName: String!
+	value: String!
+	calldata: String!
+	calldataHash: String!
+	functionSignature: String!
+	selector: String!
+	"""
+	Producer-set decode claims; never render as trusted without independently
+	re-decoding calldata and comparing the result.
+	"""
+	decodedArguments: [ContractArgument!]!
+	abiSource: String!
+	"""
+	Reports only what abiSource claimed when the producer queried it. Consumers
+	must confirm verification independently before relying on the ABI.
+	"""
+	abiVerified: Boolean!
+	abiHash: String!
+	isProxy: Boolean!
+	implementationAddress: String
+	runtimeCodeHash: String!
+	simulation: ContractSimulation
+	notes: String
+}
+type ContractSimulation {
+	success: Boolean!
+	blockNumber: String!
+	gasEstimate: String!
+	error: String
+}
+"""
+Metadata specific to convert (swap) transactions
+"""
+type ConvertMetadata {
+	"""
+	Flow type: "inbox" (native token) or "permit2" (ERC20 token)
+	"""
+	flowType: String!
+	"""
+	Provider request hash when available (primarily legacy Bungee execution)
+	"""
+	requestHash: String!
+	"""
+	Fresh execution quote ID; distinct from initial and approval quote IDs
+	"""
+	quoteId: String!
+	"""
+	Origin chain transaction hash
+	"""
+	originTxHash: String!
+	"""
+	Destination chain transaction hash
+	"""
+	destinationTxHash: String!
+	"""
+	Permit2 approval transaction hash (only for permit2 flow)
+	"""
+	approvalTxHash: String!
+	"""
+	Final exchange rate (output/input)
+	"""
+	rate: String!
+	"""
+	Slippage tolerance percentage (e.g., "0.5" for 0.5%).
+	The user's tolerance on every mode except EXACT_OUTPUT, where Ledger writes
+	the server-resolved value instead — the same one carried by
+	CryptoCryptoConvertDetails.resolvedSlippagePercentage. Check amountMode
+	before attributing it to the initiator.
+	"""
+	slippagePercentage: String!
+	"""
+	Minimum receive constraint in standard units
+	"""
+	minimumReceive: String!
+	"""
+	Locked quote provider ("bungee" / "lifi"). Null for legacy transactions.
+	"""
+	provider: String
+	"""
+	LI.FI route tool/bridge name. Null for non-LI.FI and legacy transactions.
+	"""
+	lifiTool: String
+	"""
+	Approved amount intent. Null for legacy transactions.
+	"""
+	amountMode: CryptoCryptoConvertAmountMode
+	"""
+	Requested destination target in standard units.
+	"""
+	requestedTargetAmountStandard: String
+	"""
+	Approved source amount in origin standard units.
+	"""
+	derivedSourceAmountStandard: String
+	"""
+	Initial reverse quote shown to the user.
+	"""
+	initialQuoteId: ID
+	"""
+	Submit-time validation quote used to create the approval.
+	"""
+	approvalQuoteId: ID
+	"""
+	Approved execution fee in basis points.
+	"""
+	approvedFeeBps: String
+	"""
+	Approved route ordering; fixed-output v1 uses "cheapest".
+	"""
+	routePreference: String
+	"""
+	Actual refund settlement for an exact-output conversion. Null for legacy,
+	non-exact-output, and records for which Ledger has no settlement summary.
+	"""
+	refundSettlement: ConvertRefundSettlement
+}
+"""
+The customer-facing destination for an exact-output refund. This deliberately
+exposes only the destination identity Ledger has sanitized; it is not a full
+transaction Party and carries no amount or pricing fields.
+"""
+type ConvertRefundDestination {
+	partyType: PartyType!
+	address: String
+	wallet: Wallet
+	instrument: Instrument
+}
+"""
+Actual exact-output refund settlement projected by Ledger onto the customer
+Convert transaction. This is authoritative post-execution data, unlike the
+estimated refund carried by the quote route. Destination is a sanitized
+customer-facing identity and never contains Convert Engine internal accounts.
+"""
+type ConvertRefundSettlement {
+	status: ConvertRefundSettlementStatus!
+	"""
+	Null when the summary fails closed to UNKNOWN.
+	"""
+	sourceInstrumentId: ID
+	actualRefundAmountStandard: String
+	actualNetSpentAmountStandard: String
+	"""
+	The residual kept instead of refunded. Only RETAINED_AS_DUST carries it, and
+	it is the one figure that status cannot otherwise publish: nothing was
+	refunded, so actualRefundAmountStandard is 0 and actualNetSpentAmountStandard
+	equals the prepayment, leaving their difference at zero.
+
+	Null on every other status, and also null for settlements written before
+	Ledger recorded it - those stay readable rather than failing closed, so do
+	not treat absence as an error.
+	"""
+	retainedDustAmountStandard: String
+	destination: ConvertRefundDestination
+	transfers: [ConvertRefundTransfer!]!
+}
+"""
+Authoritative settlement state for an exact-output refund. UNKNOWN preserves
+readability when Ledger adds a state before the Gateway schema is upgraded.
+"""
+enum ConvertRefundSettlementStatus {
+	PENDING
+	REFUNDED
+	RETAINED_AS_DUST
+	NOT_REQUIRED
+	MANUAL_REVIEW
+	UNKNOWN
+}
+"""
+A sanitized reference to a refund child transaction. Amounts are source-
+instrument standard units. The hash is a display/audit reference only; the
+pooled Convert Engine transaction and external-transaction IDs are private.
+"""
+type ConvertRefundTransfer {
+	role: ConvertRefundTransferRole!
+	transactionHash: String!
+	"""
+	Ledger emits only finalized refund transfers, so this is currently always
+	the literal "confirmed". Other values make the whole settlement UNKNOWN.
+	"""
+	state: String!
+	amountStandard: String!
+}
+"""
+Identifies which exact-output refund stage produced a child transfer without
+exposing that transfer's internal Convert Engine accounts or accounting legs.
+"""
+enum ConvertRefundTransferRole {
+	CONVERT_ENGINE_SOURCE_REFUND
+	OUTER_RESIDUAL_REFUND
+}
+"""
+Crypto-to-crypto conversion types and operations
+Identifies which side of a crypto conversion is fixed.
+"""
+enum CryptoCryptoConvertAmountMode {
+	"""
+	Fix the source amount and calculate the destination amount.
+	"""
+	EXACT_INPUT
+	"""
+	Fix the minimum destination amount and calculate the source amount.
+	"""
+	MINIMUM_OUTPUT
+	"""
+	Fix the exact destination amount. The source amount is a prepayment cap;
+	unused funds are settled by Ledger according to the returned quote terms.
+	"""
+	EXACT_OUTPUT
+}
+type CryptoCryptoConvertDetails {
+	v: Int!
+	"""
+	Banking account ID when convert is initiated from banking rails
+	"""
+	bankingAccountId: String
+	bankingAccount: BankingAccount
+	"""
+	Source instrument account ID
+	"""
+	originInstrumentAccountId: String!
+	originInstrumentAccount: InstrumentAccount
+	"""
+	Principal balance bucket signed into the approval. Legacy/unspecified
+	records return null and must not be inferred as WALLET.
+	"""
+	balanceSource: BalanceSource
+	"""
+	Vault identity signed into Smart Balance approvals; null for Wallet Balance.
+	"""
+	smartBalanceVaultId: ID
+	smartBalanceVault: Vault
+	"""
+	Destination instrument ID
+	"""
+	destinationInstrumentId: String!
+	destinationInstrument: Instrument
+	"""
+	Approved source amount in origin instrument standard units.
+	For amountMode EXACT_OUTPUT this is the prepayment cap the approver
+	authorises, not the amount the conversion is expected to spend: the unused
+	remainder is refunded. The expected spend/refund split is quote-time
+	information and is not part of the approval record.
+	"""
+	amount: String!
+	"""
+	Execution constraint (slippage tolerance)
+	"""
+	executionConstraint: CryptoCryptoConvertExecutionConstraint
+	"""
+	Source of gas fees
+	"""
+	gasSource: String
+	"""
+	Origin network ID
+	"""
+	originNetworkId: String
+	originNetwork: Network
+	"""
+	Origin token contract address
+	"""
+	originTokenAddress: String
+	"""
+	Origin wallet address
+	"""
+	originAddress: String
+	"""
+	Destination network ID
+	"""
+	destinationNetworkId: String
+	destinationNetwork: Network
+	"""
+	Destination token contract address
+	"""
+	destinationTokenAddress: String
+	"""
+	Destination wallet address
+	"""
+	destinationAddress: String
+	"""
+	Quote provider that won the comparison and will be used for execution
+	("bungee" / "lifi"). Empty for legacy/old-client submissions.
+	"""
+	provider: String
+	"""
+	Approved amount intent. Null for legacy approvals.
+	"""
+	amountMode: CryptoCryptoConvertAmountMode
+	"""
+	Requested destination target in standard units. A floor for
+	minimum-output; the exact delivered amount for exact-output.
+	"""
+	requestedTargetAmount: String
+	"""
+	Exact-output only: platform-controlled Convert Engine wallet that receives
+	the approved source prepayment. Approvers must be shown this alongside
+	destinationAddress — the approved funds are sent here, not to the final
+	recipient, and the conversion is executed from it. The destination-side
+	custody wallet that briefly holds the converted funds before delivery is a
+	separate address and is not exposed on this approval.
+	Null for every other amount mode.
+	"""
+	stagingAddress: String
+	"""
+	Exact-output only: execution slippage resolved server-side, in percent
+	units (e.g. "0.3" for 0.3%). On this mode executionConstraint.percentage
+	mirrors the same server-resolved value rather than a caller-supplied
+	tolerance, so do not label it as the initiator's choice.
+	Null for every other amount mode.
+	"""
+	resolvedSlippagePercentage: String
+	"""
+	Exact-output only: the whole retained surplus at approval time
+	(expected output minus the delivered target) in destination-instrument
+	standard units. It already covers the chain costs, including the delivery
+	gas reported as estimatedNetworkFeeAmount. Display only, and distinct from
+	approvedFeeBps, which is Reah's own convert markup rate resolved from the
+	monetization runtime and applied on the source amount.
+	Null for every other amount mode.
+	"""
+	estimatedServiceFeeAmount: String
+	"""
+	Exact-output only: the delivery transfer's estimated chain cost at approval
+	time, in destination-instrument standard units — a quote-time conversion of
+	a gas estimate, so the settled cost may differ. It is a **component of**
+	estimatedServiceFeeAmount, broken out so a small transfer's chain cost is
+	not read as pricing; the two must never be summed. Display only.
+	Null for every other amount mode.
+	"""
+	estimatedNetworkFeeAmount: String
+	"""
+	Initial reverse quote shown to the user.
+	"""
+	initialQuoteId: ID
+	"""
+	Submit-time validation quote used to create the approval.
+	"""
+	approvalQuoteId: ID
+	"""
+	Approved execution fee in basis points.
+	"""
+	approvedFeeBps: String
+	"""
+	Approved route ordering; fixed-output v1 uses "cheapest".
+	"""
+	routePreference: String
+	"""
+	Zero-fee scheduled convert intent; null for instant converts. The delay
+	materially changes the approval: funds park for scheduledDelayDays 24h
+	days after execution (behind an on-chain allowance for the outgoing
+	direction) and the customer receives scheduledReceiveAmount
+	(destination-instrument standard units) off the yield curve instead of
+	the instant quote.
+
+	Precedence over the sibling fields when set: scheduledReceiveAmount is
+	the authoritative frozen customer amount; amount stays the source
+	amount, amountMode reads null (the legacy exact-input default —
+	scheduling rides the exact-input flows, which never write a mode),
+	requestedTargetAmount stays null, and
+	executionConstraint.minimumReceive applied only to the request-time
+	instant baseline the curve was priced from.
+	"""
+	scheduledDelayDays: Int
+	scheduledReceiveAmount: String
+	"""
+	USDG APR (bps) frozen at submit, base-10 like approvedFeeBps; prices the
+	fee discount.
+	"""
+	scheduledFrozenAprBps: String
+	"""
+	Outgoing only: cancellable until delivery minus this lead.
+	"""
+	scheduledMinCancelLeadSeconds: Int
+	"""
+	Notes captured at initiation time
+	"""
+	notes: String
+}
+"""
+Execution constraint for crypto convert
+"""
+type CryptoCryptoConvertExecutionConstraint {
+	"""
+	Slippage tolerance percentage (e.g., "0.5" for 0.5%)
+	"""
+	percentage: String!
+	"""
+	Minimum amount to receive in destination token
+	"""
+	minimumReceive: String!
+}
+type CryptoTreasuryDepositDetails {
+	v: Int!
+	entityId: String!
+	entity: Entity!
+	vaultId: String!
+	vault: Vault
+	networkId: String!
+	network: Network
+	assetAmount: String!
+	notes: String
+	gasSource: String
+	gasUsdFee: String
+	gas: GasInfo
+	instrumentId: String!
+	instrument: Instrument
+	instrumentAccountId: String!
+	instrumentAccount: InstrumentAccount
+	walletId: String!
+	wallet: Wallet
+	convertRequired: Boolean!
+	sourceNetworkId: String
+	sourceNetwork: Network
+	sourceInstrumentId: String
+	sourceInstrument: Instrument
+	sourceInstrumentAccountId: String
+	sourceInstrumentAccount: InstrumentAccount
+	sourceAmount: String
+	targetNetworkId: String
+	targetNetwork: Network
+	targetInstrumentId: String
+	targetInstrument: Instrument
+	targetInstrumentAccountId: String
+	targetInstrumentAccount: InstrumentAccount
+	minimumTargetAmount: String
+}
+type CryptoTreasuryWithdrawDetails {
+	v: Int!
+	entityId: String!
+	entity: Entity!
+	vaultId: String!
+	vault: Vault
+	networkId: String!
+	network: Network
+	assetAmount: String!
+	notes: String
+	gasSource: String
+	gasUsdFee: String
+	gas: GasInfo
+	instrumentId: String!
+	instrument: Instrument
+	instrumentAccountId: String!
+	instrumentAccount: InstrumentAccount
+	walletId: String!
+	wallet: Wallet
+}
+enum DiscountType {
+	PERCENTAGE
+	FIXED
+}
+"""
+Organization that owns wallets, members, and financial workflows in Reah.
+"""
+type Entity {
+	"""
+	Stable entity identifier returned by the backend.
+	"""
+	id: ID!
+	"""
+	Human-readable name for the entity.
+	"""
+	name: String!
+	"""
+	Business/individual classification of this entity.
+	"""
+	type: EntityType!
+	"""
+	Lifecycle stage reported by the backend.
+	"""
+	state: EntityState!
+	"""
+	Publicly accessible CDN URL for the entity logo.
+	"""
+	logoURL: String!
+	"""
+	RFC 3339 timestamp for when the entity record was created.
+	"""
+	createdAt: Time!
+	"""
+	User group memberships for the authenticated user within this entity.
+	Strictly self-scoped: the resolver derives the user from the authenticated
+	session, so it only ever returns the caller's own memberships. Reading one's
+	own roles does not require permission:view (which a non-finance Cardholder
+	lacks) — gating it there would make the cardholder experience undetectable.
+	"""
+	myUserGroupMemberships: [UserGroupMembership!]!
+	"""
+	Permissions assigned to the authenticated user within this entity (union of all their user groups).
+	Strictly self-scoped (derived from the authenticated session); a user may
+	always read their own permissions without holding permission:view.
+	"""
+	myPermissions: [Permission!]!
+	"""
+	List of all user groups within this entity.
+	"""
+	userGroups: [UserGroup!]!
+	"""
+	Total balance across all accounts in USD.
+	"""
+	totalBalance: Balance!
+	"""
+	Total balance across all wallets in USD (excludes banking accounts).
+	"""
+	walletTotalBalance: Balance!
+	"""
+	Balance aggregated by account (currently not implemented - returns empty list).
+	"""
+	accountBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Balance aggregated by asset.
+	"""
+	assetBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Balance aggregated by instrument (e.g., stETH on Ethereum vs USDC on Base).
+	"""
+	instrumentBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Wallet balances aggregated by instrument across all wallets in this entity.
+	"""
+	walletInstrumentBalances(first: Int, after: String): BalanceConnection!
+	"""
+	All transactions for this entity.
+	"""
+	transactions(first: Int, after: String, filters: [SearchFilterInput!]): TransactionConnection!
+	"""
+	Aggregated transaction stats (USD) for a time window.
+	"""
+	transactionStats(startTime: Time!, endTime: Time!): TransactionStats!
+	"""
+	All wallets owned by this entity. Optionally filter by state.
+	"""
+	wallets(state: WalletState): [Wallet!]!
+	"""
+	All banking accounts owned by this entity.
+	"""
+	bankingAccounts: [BankingAccount!]!
+	"""
+	Banking page detail/status for this entity, including enable or repair state.
+	"""
+	bankingDetail: BankingAccountDetail!
+	"""
+	Configured banking KYB/provisioning provider for this entity.
+	"""
+	bankingProvider: String!
+	"""
+	All card accounts owned by this entity.
+	"""
+	cardAccounts: [CardAccount!]!
+	"""
+	All contacts owned by this entity.
+	"""
+	contacts(first: Int, after: String, type: ContactType, tagIDs: [ID!]): ContactConnection!
+	"""
+	Transactions whose counterparty matches one of the given contact's chain
+	addresses or bank accounts. Entity-level equivalent of
+	Contact.filterTransactions, kept shallow so clients can select deeply
+	nested party fields (e.g. externalBank.rails) within query depth limits.
+	"""
+	contactTransactions(contactId: ID!, first: Int, after: String, filters: [SearchFilterInput!]): TransactionConnection!
+	"""
+	All contact tags defined for this entity.
+	"""
+	contactTags: [ContactTag!]!
+	"""
+	All transaction tags defined for this entity.
+	"""
+	transactionTags: [TransactionTag!]!
+	"""
+	Gas station for this entity (for gas sponsorship).
+	"""
+	gasStation: GasStation
+	"""
+	All assets available to this entity.
+	"""
+	assets(first: Int, after: String): AssetConnection!
+	"""
+	All networks available to this entity.
+	"""
+	networks(first: Int, after: String): NetworkConnection!
+	"""
+	All instruments available to this entity.
+	"""
+	instruments(first: Int, after: String): InstrumentConnection!
+	"""
+	All default instruments for a network.
+	"""
+	defaultInstruments(networkID: ID): [Instrument!]!
+	"""
+	Members belonging to this entity with their membership details.
+	"""
+	userMemberships(first: Int, after: String): EntityMembershipConnection!
+	"""
+	Historical USD balance over time for a specific owner within this entity
+	"""
+	historicalBalance(owner: HistoricalBalanceOwnerInput!, lastDays: Int!): HistoricalBalance!
+	"""
+	Treasury position accounts for this entity.
+	"""
+	treausryPositionAccounts: [TreasuryPositionAccount!]!
+	treausryPositionAccount(vaultID: ID!): TreasuryPositionAccount
+	treausryPositionAccountSummary: TreasuryPositionAccountSummary!
+	yieldHistories(first: Int): [YieldHistory!]!
+	positionYieldHistories(startDate: Time!, endDate: Time!): [PositionYieldHistory!]!
+	yieldHistoriesConnection(first: Int, after: String): YieldHistoryConnection!
+	positionHistories(vaultID: ID!, first: Int, startTime: Time): [PositionHistory!]!
+	positionTransactions(vaultID: ID!, first: Int): [Transaction!]!
+	treasuryTransactions(first: Int): [Transaction!]!
+	treasuryPendingRedemptionTransactions(first: Int): [Transaction!]!
+	approvalRecords(first: Int, after: String, myApprovals: Boolean, myRequests: Boolean, statuses: [ApprovalStatus!], filters: [SearchFilterInput!]): ApprovalRecordConnection!
+	"""
+	The authenticated user's own cards in this entity.
+	"""
+	myCards(provider: CardProvider = CARD_PROVIDER_RAIN, first: Int, after: String, statuses: [CardStatus!]): CardConnection!
+	"""
+	Card transactions for the authenticated user's own cards in this entity.
+	"""
+	myCardTransactions(first: Int, after: String): CardTransactionConnection!
+	invoices(first: Int, after: String, filters: InvoiceFiltersInput): InvoiceConnection!
+	recurringSourceInvoices(first: Int, after: String, query: String, recurrenceStates: [RecurrenceState!]): InvoiceConnection!
+	invoiceTags: [InvoiceTag!]!
+	invoiceTemplates(first: Int, after: String, query: String): InvoiceTemplateConnection!
+	invoiceReminderSettings: InvoiceReminderSettings!
+	invoiceCompanyProfile: InvoiceCompanyProfile!
+	invoiceDashboardCards: InvoiceDashboardCards!
+	settledMovements(settledFrom: Time!, settledTo: Time!, first: Int = 100, after: String): SettledMovementConnection!
+	"""
+	Settled movements for ordinary transaction analysis. Treasury activity
+	(treasury_deposit, treasury_withdraw, add_smart_balance,
+	withdraw_smart_balance, on both their wallet and Treasury sides) and spam are
+	left out unless requested, and the connection reports what each exclusion
+	removed. A page token only continues the selection that opened it.
+	"""
+	analysisSettledMovements(settledFrom: Time!, settledTo: Time!, first: Int = 100, after: String, includeTreasury: Boolean = false, includeSpam: Boolean = false,
+		"""
+		Omitted/null leaves the window unrestricted; [] selects no transactions.
+		"""
+		transactionIds: [ID!]
+
+		"""
+		Excludes every posting of convert (including swaps), internal_transfer,
+		and the four Treasury categories above, including their fees/refunds.
+		"""
+		excludeInternalActivity: Boolean = false
+
+		"""
+		Excludes every posting of parents classified below USD 1. Unknown stays.
+		"""
+		excludeSmallBalances: Boolean = false
+	): AnalysisSettledMovementConnection!
+}
+"""
+Relationship between a user and an entity.
+"""
+type EntityMembership {
+	"""
+	Full entity details for this membership.
+	"""
+	entity: Entity!
+	"""
+	The user who is a member of this entity.
+	"""
+	user: User!
+	"""
+	Deprecated: backed by user_entities.root, which is set at join time and can drift from
+	actual Owner-group membership (e.g. owners promoted after joining show false). Derive
+	ownership from entity.myUserGroupMemberships (the Owner user group) instead.
+	"""
+	isOwner: Boolean!
+	"""
+	When the member first joined the entity.
+	"""
+	joinedAt: Time!
+	"""
+	When present, user is in security cooldown and restricted to view-only permissions until this time.
+	"""
+	securityCooldownUntil: Time
+	"""
+	Recovery-kit backup status for this member within the entity. Null when the
+	viewer is not permitted to see this member's status: a user may always see
+	their own status, and an owner may see any owner's status. Recovery kits are
+	owner-only, so a non-owner's own status reports hasBackup = false.
+	"""
+	recoveryKitStatus: RecoveryKitStatus
+}
+"""
+Connection type for paginated entity memberships.
+"""
+type EntityMembershipConnection {
+	"""
+	List of entity memberships in this page.
+	"""
+	memberships: [EntityMembership!]!
+	"""
+	Cursor for fetching the next page. Null if no more pages.
+	"""
+	cursor: String
+}
+type EntityProfileAddressDetails {
+	line1: String
+	line2: String
+	city: String
+	stateProvince: String
+	postalCode: String
+	countryCode: String
+	countryName: String
+}
+type EntityProfileFieldChangeDetails {
+	field: String!
+	label: String!
+	beforeValue: String
+	afterValue: String
+}
+type EntityProfileSnapshotDetails {
+	entityName: String
+	entityLogoUrl: String
+	phoneNumber: String
+	companyLegalAddress: EntityProfileAddressDetails
+}
+type EntityProfileUpdateDetails {
+	v: Int!
+	entityId: String!
+	beforeProfile: EntityProfileSnapshotDetails
+	afterProfile: EntityProfileSnapshotDetails
+	changes: [EntityProfileFieldChangeDetails!]!
+}
+"""
+Lifecycle stages an entity can move through.
+"""
+enum EntityState {
+	UNKNOWN
+	DRAFT
+	ACTIVE
+	ARCHIVED
+}
+enum EntityType {
+	UNKNOWN
+	BUSINESS
+	INDIVIDUAL
+}
+"""
+Explorer URL templates for a network
+"""
+type ExplorerLinks {
+	"""
+	URL template for viewing a transaction. Replace {txhash} with the actual tx hash.
+	Example: "https://etherscan.io/tx/{txhash}"
+	"""
+	tx: String!
+}
+"""
+An external transaction that implements a Transaction (e.g., blockchain tx, ACH transfer)
+"""
+type ExtTransaction {
+	id: String!
+	"""
+	The entity this external transaction belongs to
+	"""
+	entity: Entity!
+	"""
+	The parent transaction
+	"""
+	transaction: Transaction!
+	"""
+	Type of external system (e.g., "blockchain", "ach")
+	"""
+	extType: String!
+	"""
+	Reference ID in the external system (e.g., blockchain tx hash)
+	"""
+	extRef: String!
+	"""
+	Current state
+	"""
+	state: String!
+	createdAt: Time!
+	"""
+	Network for blockchain transactions (null for non-blockchain)
+	"""
+	network: Network
+	"""
+	The accounting legs (debits and credits) for this transaction
+	"""
+	legs: [TransactionLeg!]!
+}
+type ExternalBank {
+	contactBankAccountId: ID
+	name: String
+	accountHolderName: String
+	bankName: String
+	bankAddress: ExternalBankAddress
+	rails: ContactBankAccountRails
+}
+type ExternalBankAddress {
+	street1: String
+	street2: String
+	city: String
+	region: String
+	postalCode: String
+	country: String
+}
+"""
+Structured source/target parties for a transaction
+"""
+type FromTo {
+	from: [Party!]!
+	to: [Party!]!
+}
+type GasInfo {
+	instrument: Instrument
+	amount: String!
+	usd: String!
+	payerAccountType: String!
+	payerAccountId: ID!
+}
+"""
+Gas Station types and operations for entity-level gas sponsorship
+Gas station state for an entity
+"""
+type GasStation {
+	"""
+	Unique identifier for the gas station
+	"""
+	id: ID!
+	"""
+	Entity that owns this gas station
+	"""
+	entityId: ID!
+	"""
+	Paid balance in USD cents (from topups, can be withdrawn)
+	"""
+	paidBalance: String!
+	"""
+	Gas credits in USD cents (cannot be withdrawn)
+	"""
+	gasCredits: String!
+	"""
+	Total balance in USD cents (paidBalance + gasCredits)
+	"""
+	totalBalance: String!
+	"""
+	List of transactions for this gas station
+	"""
+	transactions(first: Int, after: String): GasStationTransactionConnection!
+	"""
+	List of supported networks for gas station topup
+	"""
+	supportedNetworks: [Network!]!
+	"""
+	List of supported instruments for gas station topup
+	"""
+	supportedInstruments: [Instrument!]!
+}
+type GasStationTopupDetails {
+	v: Int!
+	sourceInstrumentAccountId: String!
+	sourceInstrumentAccount: InstrumentAccount
+	nativeAmount: String!
+	estimatedGasStationCredit: String!
+	estimatedGasFee: String!
+}
+"""
+Gas station transaction record
+"""
+type GasStationTransaction {
+	"""
+	Unique identifier for the transaction
+	"""
+	id: ID!
+	"""
+	Entity that owns the gas station
+	"""
+	entityId: ID!
+	"""
+	Type of transaction (sponsorship, topup, withdrawal)
+	"""
+	type: GasStationTransactionType!
+	"""
+	Status of the transaction
+	"""
+	status: GasStationTransactionStatus!
+	"""
+	RFC 3339 timestamp for when the transaction was initiated
+	"""
+	initiatedAt: Time!
+	"""
+	Network where the transaction occurred
+	"""
+	network: Network
+	"""
+	Instrument used in the transaction
+	"""
+	instrument: Instrument
+	"""
+	On-chain transaction hash (if applicable)
+	"""
+	txHash: String
+	"""
+	USD amount in cents
+	"""
+	usdAmount: String!
+	"""
+	Native token amount
+	"""
+	nativeAmount: String!
+	"""
+	Source transaction (for sponsorships)
+	"""
+	sourceTransaction: Transaction
+	"""
+	Gas transaction (for sponsorships)
+	"""
+	gasTransaction: Transaction
+}
+"""
+Connection type for paginated gas station transactions
+"""
+type GasStationTransactionConnection {
+	transactions: [GasStationTransaction!]!
+	nextCursor: String
+}
+"""
+Status of a gas station transaction
+"""
+enum GasStationTransactionStatus {
+	GAS_STATION_TRANSACTION_STATUS_UNSPECIFIED
+	GAS_STATION_TRANSACTION_STATUS_PENDING
+	GAS_STATION_TRANSACTION_STATUS_COMPLETED
+	GAS_STATION_TRANSACTION_STATUS_FAILED
+}
+"""
+Type of gas station transaction
+"""
+enum GasStationTransactionType {
+	GAS_STATION_TRANSACTION_TYPE_UNSPECIFIED
+	GAS_STATION_TRANSACTION_TYPE_SPONSORSHIP
+	GAS_STATION_TRANSACTION_TYPE_TOPUP
+	GAS_STATION_TRANSACTION_TYPE_WITHDRAWAL
+}
+type GasStationWithdrawalDetails {
+	v: Int!
+	destinationInstrumentAccountId: String!
+	destinationInstrumentAccount: InstrumentAccount
+	usdAmount: String!
+	estimatedNativeAmountCredit: String!
+	estimatedGasFee: String!
+}
+type GlobalSearchResult {
+	query: String!
+	total: Int!
+	groups: [SearchGroup!]!
+}
+"""
+Historical balance data over time for an owner
+"""
+type HistoricalBalance {
+	"""
+	The owner this historical balance belongs to
+	"""
+	owner: HistoricalBalanceOwner!
+	"""
+	Time series of USD balance snapshots
+	"""
+	balances: [USDBalanceSnapshot!]!
+}
+"""
+Owner identification for historical balance queries
+"""
+type HistoricalBalanceOwner {
+	"""
+	Type of owner (entity aggregate, wallet, banking account, etc.)
+	"""
+	ownerType: HistoricalBalanceType!
+	"""
+	Owner ID (wallet ID or banking account ID, null for aggregate types)
+	"""
+	ownerID: String
+}
+"""
+Input for specifying historical balance owner in queries
+"""
+input HistoricalBalanceOwnerInput {
+	"""
+	Type of owner (entity aggregate, wallet, banking account, etc.)
+	"""
+	ownerType: HistoricalBalanceType!
+	"""
+	Owner ID (wallet ID or banking account ID, null for aggregate types)
+	"""
+	ownerID: String
+}
+"""
+Type of owner for historical balance queries
+"""
+enum HistoricalBalanceType {
+	"""
+	Unknown or unspecified owner type
+	"""
+	Unknown
+	"""
+	Aggregated balance across all entity accounts
+	"""
+	AllEntity
+	"""
+	Aggregated balance across all wallets
+	"""
+	AllWallet
+	"""
+	Aggregated balance across all banking accounts
+	"""
+	AllBanking
+	"""
+	Balance for a specific wallet
+	"""
+	Wallet
+	"""
+	Balance for a specific banking account
+	"""
+	BankingAccount
+	"""
+	Balance for a specific card account
+	"""
+	CardAccount
+}
+"""
+An asset on a specific network (e.g., USDC on Polygon, ETH on Ethereum)
+"""
+type Instrument {
+	id: ID!
+	"""
+	The underlying asset
+	"""
+	asset: Asset!
+	"""
+	The network this instrument operates on (null for fiat)
+	"""
+	network: Network!
+	"""
+	Decimal places for this specific instrument
+	"""
+	decimals: Int!
+	"""
+	Contract address of the token on its network (nullable for native/fiat)
+	"""
+	contractAddress: String
+	"""
+	Whether this instrument is marked as default/primary
+	"""
+	isDefault: Boolean!
+	"""
+	Onchain safety status when Ledger onchain security is enabled.
+	"""
+	security: OnchainSecurityStatus
+}
+"""
+An account holding a specific instrument (asset on a network) in a blockchain account
+"""
+type InstrumentAccount {
+	id: ID!
+	"""
+	The entity that owns this account
+	"""
+	entity: Entity!
+	"""
+	The wallet this account belongs to
+	"""
+	wallet: Wallet!
+	"""
+	The blockchain account this instrument account belongs to
+	"""
+	blockchainAccount: BlockchainAccount!
+	"""
+	The specific instrument (e.g., USDC on Polygon)
+	"""
+	instrument: Instrument!
+	createdAt: Time!
+	"""
+	Current balance for this instrument
+	"""
+	balance: Balance!
+	"""
+	Transaction history for this instrument account
+	"""
+	transactions(first: Int, after: String): TransactionConnection!
+}
+"""
+Paginated instruments
+"""
+type InstrumentConnection {
+	instruments: [Instrument!]!
+	cursor: String
+}
+"""
+Invitation to join an entity by email.
+"""
+type Invitation {
+	id: ID!
+	"""
+	Current lifecycle stage of the invitation.
+	"""
+	state: InvitationState!
+	"""
+	Origin of the invitation. Tells the client whether to accept it via
+	`acceptInvitation` (STANDARD) or `acceptRecoveryInvitation` (RECOVERY).
+	"""
+	source: InvitationSource!
+	"""
+	Entity that issued the invitation.
+	"""
+	entity: Entity!
+	"""
+	User who created the invitation.
+	"""
+	createdBy: User!
+	"""
+	Placeholder or target user created for this invitation.
+	"""
+	user: User
+	"""
+	Target roles/groups assigned when the invite is accepted.
+	"""
+	targetUserGroups: [UserGroup!]!
+	"""
+	Target email for the invite.
+	"""
+	email: String!
+	"""
+	When the invitation was created.
+	"""
+	createdAt: Time!
+	"""
+	When the invitation will expire.
+	"""
+	expireAt: Time!
+	"""
+	When the invitation was accepted.
+	"""
+	acceptedAt: Time
+}
+type InvitationCancelDetails {
+	v: Int!
+	invitation: Invitation!
+}
+type InvitationCreateDetails {
+	v: Int!
+	invite: [String!]!
+	to: String
+	roles: [InvitationRoleAssignment!]!
+}
+type InvitationRoleAssignment {
+	email: String!
+	roleNames: [String!]!
+}
+"""
+Origin of an invitation. Determines which accept mutation the client must call:
+STANDARD invitations use `acceptInvitation`; RECOVERY invitations (issued by the
+owner-recovery flow) use `acceptRecoveryInvitation`.
+"""
+enum InvitationSource {
+	"""
+	Source not specified by backend.
+	"""
+	UNKNOWN
+	"""
+	Ordinary invitation to join an entity.
+	"""
+	STANDARD
+	"""
+	Invitation issued by the owner-recovery flow.
+	"""
+	RECOVERY
+}
+enum InvitationState {
+	"""
+	State not specified by backend.
+	"""
+	UNKNOWN
+	"""
+	Invitation is still valid and awaiting acceptance.
+	"""
+	PENDING
+	"""
+	Invitation has been accepted by the invitee.
+	"""
+	ACCEPTED
+	"""
+	Invitation expired before being accepted.
+	"""
+	EXPIRED
+	"""
+	Invitation was rejected by the invitee.
+	"""
+	REJECTED
+	"""
+	Invitation was canceled before acceptance.
+	"""
+	CANCELED
+}
+type Invoice {
+	id: ID!
+	entity: Entity!
+	invoiceNumber: String!
+	status: InvoiceStatus!
+	invoiceType: InvoiceType!
+	companyName: String
+	companyEmail: String
+	companyAddress: String
+	companyLogoUrl: String
+	customerName: String!
+	customerType: String
+	customerEmail: String
+	customerBillingAddress: String
+	issueDate: Time!
+	dueDate: Time!
+	description: String
+	customColumns: [InvoiceCustomColumn!]!
+	lineItems: [InvoiceLineItem!]!
+	pricingAdjustments: [InvoicePricingAdjustment!]!
+	discount: InvoiceDiscount!
+	tax: InvoiceTax!
+	paymentConfig: InvoicePaymentConfig!
+	amountSummary: InvoiceAmountSummary!
+	recurrenceState: RecurrenceState
+	recurrenceRule: RecurrenceRule
+	nextIssueDate: Time
+	shareToken: String
+	shareURL: String
+	pdfName: String
+	ccEmails: [String!]!
+	sentAt: Time
+	paidAt: Time
+	receiptSentAt: Time
+	tags: [InvoiceTag!]!
+	notes: [InvoiceNote!]!
+	approvalId: ID
+	matchCandidates: [InvoiceMatchCandidate!]!
+	matchedTransactions: [InvoiceMatchedTransaction!]!
+	createdAt: Time!
+	updatedAt: Time!
+}
+"""
+Invoice approval action metadata emitted by ledger for billing approval records.
+The action field is display metadata; execution should still route from the
+approval record operation type/subtype.
+"""
+type InvoiceActionDetails {
+	v: Int!
+	entityId: String!
+	invoiceId: String!
+	invoiceNumber: String
+	"""
+	Canonical invoice approval subtype. Expected values include:
+	publish, mark_paid, mark_sent, stop_recurring, delete_recurring_source.
+	"""
+	action: String!
+	"""
+	Human-readable label for action.
+	"""
+	actionLabel: String!
+	"""
+	Ledger invoice type. Expected values include: ONE_TIME, RECURRING.
+	"""
+	invoiceType: String
+	status: String
+	customerEmail: String
+	customerName: String
+	"""
+	Decimal amount in invoice currency units.
+	"""
+	amountDue: String
+	"""
+	Uppercase invoice currency code.
+	"""
+	currency: String
+	"""
+	Optional transaction id supplied by mark-paid approval flows.
+	"""
+	transactionId: String
+}
+type InvoiceAmountSummary {
+	subtotal: String!
+	discount: String!
+	tax: String!
+	adjustments: String!
+	"""
+	Decimal string in `currency`. The invoice's final amount due in its primary
+	currency. For mixed-currency invoices (per-line currencies), this is the
+	top-level amount; per-line currencies live on InvoiceLineItem.currency.
+	"""
+	amountDue: String!
+	currency: String!
+	"""
+	Decimal string in USD, computed at publish time (or from a per-line FX
+	rollup for mixed-currency invoices) and frozen on the invoice row. Use
+	this — not amountDue — when aggregating invoice values for AR dashboards
+	/ lists so figures stay comparable across rows in different currencies.
+	Empty string for legacy invoices written before the ledger started
+	populating it.
+	"""
+	amountDueUsd: String!
+}
+type InvoiceChainAddress {
+	chain: String!
+	address: String!
+}
+type InvoiceClearancePredictionCard {
+	predictedClearAmount7dUsd: String!
+	avgPAmountWeighted: Float!
+	expectedClearDays: Int!
+}
+type InvoiceCompanyProfile {
+	companyName: String!
+	companyEmail: String!
+	companyAddress: String!
+	logoKey: String!
+	companyLogoURL: String
+	customIdPrefix: String!
+	invoiceIdIncludePeriod: Boolean!
+	ccEmails: [String!]!
+	updatedAt: Time!
+}
+type InvoiceConnection {
+	invoices: [Invoice!]!
+	cursor: String
+}
+type InvoiceCustomColumn {
+	id: ID!
+	name: String!
+	type: InvoiceCustomColumnType!
+}
+enum InvoiceCustomColumnType {
+	TEXT
+	NUMBER
+	DATE
+}
+type InvoiceDashboardCards {
+	totalOpen: InvoiceTotalOpenCard!
+	overdue: InvoiceOverdueCard!
+	clearancePrediction: InvoiceClearancePredictionCard!
+}
+type InvoiceDiscount {
+	enabled: Boolean!
+	discountType: DiscountType
+	discountValue: String
+}
+input InvoiceFiltersInput {
+	statuses: [InvoiceStatus!]
+	invoiceType: InvoiceType
+	customerName: String
+	query: String
+	dueDateFrom: Time
+	dueDateTo: Time
+	amountDueExact: String
+	amountDueMin: String
+	amountDueMax: String
+	tags: [String!]
+	aiMatchedOnly: Boolean
+	recurringOnly: Boolean
+}
+type InvoiceLineItem {
+	id: ID!
+	name: String!
+	quantity: Float!
+	price: String!
+	amount: String!
+	customFieldsJson: String
+	"""
+	Per-line-item currency / asset code (e.g. "USDC", "EUR", "BTC", or a custom token).
+	Nullable for backward compatibility: when null the line item inherits the
+	invoice's top-level amountSummary.currency.
+	"""
+	currency: String
+}
+type InvoiceMatchCandidate {
+	transactions: [Transaction!]!
+	reviewStatus: InvoiceMatchReviewStatus!
+}
+enum InvoiceMatchReviewStatus {
+	AWAITING_REVIEW
+	COMPLETED
+	PARTIAL_MATCH
+	UNMATCHED
+}
+type InvoiceMatchedTransaction {
+	id: ID!
+	transaction: Transaction!
+	reviewStatus: InvoiceMatchReviewStatus!
+}
+type InvoiceNote {
+	id: ID!
+	text: String!
+	createdAt: Time!
+	createdBy: User
+}
+type InvoiceOverdueCard {
+	amountUsd: String!
+	invoiceCount: Int!
+	averageDaysLate: Float!
+	followUpCustomer: String
+}
+type InvoicePaymentConfig {
+	methods: [InvoicePaymentMethod!]!
+	bankingRail: BankingUsdRail
+	chains: [String!]!
+	chainAddresses: [InvoiceChainAddress!]!
+	customPaymentNote: String
+	customPaymentReference: String
+}
+enum InvoicePaymentMethod {
+	BANK_TRANSFER
+	CRYPTO
+}
+type InvoicePricingAdjustment {
+	id: ID!
+	type: InvoicePricingAdjustmentType!
+	mode: InvoicePricingAdjustmentMode!
+	direction: InvoicePricingAdjustmentDirection!
+	value: String!
+	affectItemIds: [ID!]!
+}
+enum InvoicePricingAdjustmentDirection {
+	DECREASE
+	INCREASE
+}
+enum InvoicePricingAdjustmentMode {
+	FIXED_AMOUNT
+	PERCENTAGE
+}
+enum InvoicePricingAdjustmentType {
+	UNSPECIFIED
+	DISCOUNT
+	SURCHARGE
+}
+enum InvoiceReminderFrequency {
+	EVERY_3_DAYS
+	EVERY_5_DAYS
+	EVERY_7_DAYS
+}
+enum InvoiceReminderMaxReminders {
+	ONE
+	TWO
+	THREE
+}
+type InvoiceReminderSettings {
+	enabled: Boolean!
+	frequency: InvoiceReminderFrequency!
+	maxReminders: InvoiceReminderMaxReminders!
+	start: InvoiceReminderStart!
+	sendReceiptOnPaid: Boolean!
+	autoMatchEnabled: Boolean!
+}
+enum InvoiceReminderStart {
+	AFTER_DUE_DATE
+	ON_DUE_DATE
+	THREE_DAYS_BEFORE_DUE_DATE
+}
+enum InvoiceStatus {
+	DRAFT
+	SENT
+	OVERDUE
+	PAID
+	CANCELED
+}
+type InvoiceTag {
+	id: ID!
+	name: String!
+}
+type InvoiceTax {
+	enabled: Boolean!
+	mode: TaxMode
+	label: String
+	rate: String
+	exempt: Boolean!
+	taxId: String
+	affectItemIds: [ID!]!
+}
+type InvoiceTemplate {
+	id: ID!
+	entity: Entity!
+	templateName: String!
+	invoiceType: InvoiceType!
+	companyName: String
+	companyEmail: String
+	companyAddress: String
+	customerName: String
+	customerType: String
+	customerEmail: String
+	description: String
+	currency: String!
+	recurrenceRule: RecurrenceRule
+	customColumns: [InvoiceCustomColumn!]!
+	lineItems: [InvoiceLineItem!]!
+	pricingAdjustments: [InvoicePricingAdjustment!]!
+	discount: InvoiceDiscount!
+	tax: InvoiceTax!
+	paymentConfig: InvoicePaymentConfig!
+	tags: [InvoiceTag!]!
+	createdAt: Time!
+	updatedAt: Time!
+}
+type InvoiceTemplateConnection {
+	templates: [InvoiceTemplate!]!
+	cursor: String
+}
+type InvoiceTimelineChange {
+	fieldPath: String!
+	label: String!
+	oldValue: String
+	newValue: String
+}
+type InvoiceTimelineConnection {
+	steps: [InvoiceTimelineStep!]!
+	cursor: String
+}
+enum InvoiceTimelineEventSource {
+	UNKNOWN
+	MANUAL
+	SCHEDULED
+	APPROVAL_EXECUTOR
+	SYSTEM
+}
+enum InvoiceTimelineEventType {
+	UNKNOWN
+	CREATED
+	PUBLISH
+	MARK_AS_PAID
+	REOPEN
+	SENT
+	STATUS_CHANGED
+	INVOICE_EDITED
+	RECIPIENT_CHANGED
+	BILLING_SCHEDULE_UPDATED
+	LINE_ITEM_ADDED
+	LINE_ITEM_REMOVED
+	LINE_ITEM_UPDATED
+	TAX_UPDATED
+	DISCOUNT_UPDATED
+	PAYMENT_METHOD_UPDATED
+	PAID
+	REMINDER_SENT
+	RECEIPT_SENT
+	MATCH_CONFIRMED
+	MATCH_UPDATED
+}
+type InvoiceTimelineStep {
+	id: ID!
+	eventType: InvoiceTimelineEventType!
+	occurredAt: Time!
+	actor: User
+	actorName: String
+	source: InvoiceTimelineEventSource!
+	eventKey: String!
+	title: String
+	changes: [InvoiceTimelineChange!]!
+	metadataJson: String
+}
+type InvoiceTotalOpenCard {
+	amountUsd: String!
+	activeInvoiceCount: Int!
+	dueThisWeekCount: Int!
+	sentCount: Int!
+	draftCount: Int!
+	awaitingConfirmationCount: Int!
+}
+enum InvoiceType {
+	ONE_TIME
+	RECURRING
+}
+"""
+An account that can be part of a transaction leg
+"""
+union LegAccount = InstrumentAccount | BankingAccount | TreasuryPositionAccount
+"""
+A blockchain network (e.g., Ethereum, Polygon, Bitcoin)
+"""
+type Network {
+	id: ID!
+	"""
+	Full name (e.g., "Ethereum Mainnet", "Polygon")
+	"""
+	name: String!
+	"""
+	URL-friendly identifier (e.g., "ethereum", "polygon")
+	"""
+	slug: String!
+	"""
+	logo image url
+	"""
+	logoUrl: String!
+	"""
+	Explorer URL templates for this network
+	"""
+	explorerLinks: ExplorerLinks
+	"""
+	Native instrument for this network
+	"""
+	nativeInstrument: Instrument
+}
+"""
+Paginated networks
+"""
+type NetworkConnection {
+	networks: [Network!]!
+	cursor: String
+}
+type NodeConsensus {
+	type: String
+	k: Int
+	members: [User!]!
+}
+type OnchainSecurityReason {
+	code: String!
+	title: String!
+	description: String!
+	source: String!
+	severity: String!
+}
+enum OnchainSecurityRiskLevel {
+	UNSPECIFIED
+	LOW
+	SUSPICIOUS
+	SPAM
+}
+type OnchainSecurityStatus {
+	subjectType: OnchainSecuritySubjectType!
+	riskLevel: OnchainSecurityRiskLevel!
+	reasons: [OnchainSecurityReason!]!
+	source: String!
+	checkedAt: Time
+	expiresAt: Time
+}
+enum OnchainSecuritySubjectType {
+	TOKEN
+	ADDRESS
+	CONTRACT
+}
+enum OneStepReceiveDeadlinePolicy {
+	UNKNOWN
+	CONVERT_RECEIVED
+	RECEIVED_TO_BANKING
+}
+"""
+Immutable OneStep terms linked to a provisioning order before approval.
+"""
+type OneStepReceiveDetails {
+	v: Int!
+	orderId: ID!
+	bankingAccountId: ID!
+	"""
+	Requested receive target in USD minor units (cents).
+	"""
+	targetAmountMinor: String!
+	"""
+	Funding-window duration in seconds; the window starts only after approval execution.
+	"""
+	fundingWindowSeconds: Int!
+	targetWalletId: ID!
+	"""
+	Destination address on targetNetworkId.
+	"""
+	targetAddress: String!
+	targetInstrumentId: ID!
+	targetSymbol: String!
+	targetNetworkId: ID!
+	targetNetworkName: String!
+	excessPolicy: OneStepReceiveExcessPolicy!
+	deadlinePolicy: OneStepReceiveDeadlinePolicy!
+	"""
+	Maximum total execution cost in integer basis points, encoded as a base-10 string.
+	"""
+	maxSlippageBps: String!
+	notes: String
+	"""
+	Target-token estimate shown to approvers, in target instrument standard
+	units. Server-captured at request time for approvals produced by a Ledger
+	that snapshots the target funding quote; approvals created before that Ledger
+	was deployed permanently carry the requester-supplied estimate, and nothing
+	on this record distinguishes the two. Non-binding either way: execution
+	re-quotes after approval, so only `maxSlippageBps` bounds the executed
+	amount. Must not be presented as guaranteed or server-computed. Null when no
+	estimate was captured; never read null as zero.
+	"""
+	estimatedReceiveAmount: String
+}
+enum OneStepReceiveExcessPolicy {
+	UNKNOWN
+	CONVERT_ALL_TO_TARGET
+	EXCESS_TO_BANKING
+}
+type Party {
+	partyType: PartyType!
+	address: String
+	wallet: Wallet
+	bankingAccount: BankingAccount
+	cardAccount: CardAccount
+	card: Card
+	vault: Vault
+	externalBank: ExternalBank
+	addresses: [String!]
+	instrument: Instrument
+	amount: String!
+	estimatedUsd: String!
+	actualUsd: String
+	estimatedFiatAmount: String
+	actualFiatAmount: String
+	currency: String
+	currencyScale: Int
+	"""
+	Contact resolved for this party (requires entity scope).
+	"""
+	contact(entityId: ID!): Contact
+	priceSource: String!
+	estimatedPriceTimestamp: Time!
+	actualPriceTimestamp: Time
+	balanceBucket: BalanceBucket!
+	smartBalanceVaultId: ID
+	smartBalanceVault(entityId: ID!): Vault
+}
+enum PartyType {
+	PARTY_TYPE_UNSPECIFIED
+	PARTY_TYPE_ADDRESS
+	PARTY_TYPE_WALLET
+	PARTY_TYPE_BANKING
+	PARTY_TYPE_GROUPED_ADDRESSES
+	PARTY_TYPE_TREASURY
+	PARTY_TYPE_CARD_TRANSACTION
+	PARTY_TYPE_CARD_ACCOUNT
+	PARTY_TYPE_CARD
+	PARTY_TYPE_EXTERNAL_BANK
+	PARTY_TYPE_GAS_STATION
+	PARTY_TYPE_REAH
+}
+"""
+Pending Safe transaction awaiting confirmations.
+"""
+type PendingSafeTransaction {
+	"""
+	Unique hash for the Safe transaction.
+	"""
+	safeTxHash: String!
+	"""
+	Safe address where the transaction lives.
+	"""
+	safeAddress: String!
+	"""
+	Network the Safe is deployed on.
+	"""
+	network: Network!
+	"""
+	Safe nonce for this transaction.
+	"""
+	nonce: Int!
+	"""
+	When the transaction was submitted.
+	"""
+	submissionDate: Time!
+	"""
+	Classifier for the transaction type.
+	"""
+	type: String!
+	"""
+	Raw value for the transaction (chain units).
+	"""
+	value: String!
+	"""
+	Confirmations already collected.
+	"""
+	confirmations: [SafeConfirmation!]!
+	"""
+	Number of confirmations required to execute.
+	"""
+	confirmationsRequired: Int!
+	"""
+	Transfer legs contained in the transaction.
+	"""
+	transfers: [SafeTransfer!]!
+	"""
+	Explorer link to the transaction.
+	"""
+	link: String
+}
+type PendingSafeTransactionConnection {
+	transactions: [PendingSafeTransaction!]!
+	cursor: String
+}
+"""
+Permission assigned to a user group.
+"""
+type Permission {
+	"""
+	Permission slug in the format 'domain:action' (e.g., 'wallet_account:edit').
+	"""
+	slug: String!
+	"""
+	Domain this permission applies to.
+	"""
+	domain: PermissionDomain!
+	"""
+	Action allowed by this permission.
+	"""
+	action: PermissionAction!
+}
+"""
+Action that a permission grants.
+"""
+type PermissionAction {
+	"""
+	Action identifier (e.g., 'view', 'edit').
+	"""
+	id: ID!
+	"""
+	Human-readable title for the action (e.g., 'View', 'Edit').
+	"""
+	title: String!
+}
+"""
+Domain that a permission applies to.
+"""
+type PermissionDomain {
+	"""
+	Domain identifier (e.g., 'wallet_account').
+	"""
+	id: ID!
+	"""
+	Human-readable title for the domain (e.g., 'Wallet and Banking Accounts Management').
+	"""
+	title: String!
+}
+type PolicyUpdateEditDetails {
+	v: Int!
+	change: String
+}
+type PositionHistory {
+	date: Time!
+	assetAmount: String!
+}
+type PositionYieldHistory {
+	yieldHistories: [YieldHistory!]!
+	position: TreasuryPositionAccount!
+}
+"""
+Root query type extended by feature-specific schemas.
+"""
+type Query {
+	approvalRecord(approvalId: ID!, entityId: ID!): ApprovalRecordDetail
+	cardDetail(entityId: ID!, cardId: ID!): CardDetail
+	cardSpendingSeries(entityId: ID!, startAt: Time, endAt: Time): CardSpendingSeries!
+	cardTransactions(entityId: ID!, first: Int, after: String): CardTransactionConnection!
+	cardTransaction(entityId: ID!, transactionId: ID!): CardTransaction
+	"""
+	Retrieve a specific entity by its ID.
+	"""
+	entity(id: ID!): Entity
+	invoice(entityId: ID!, invoiceId: ID!): Invoice
+	invoiceTimeline(entityId: ID!, invoiceId: ID!, first: Int, after: String): InvoiceTimelineConnection!
+	globalSearch(entityId: ID!, query: String!, types: [SearchType!], limit: Int): GlobalSearchResult!
+	searchFilterValues(entityId: ID!, type: SearchType!, fields: [String!]!, filters: [SearchFilterInput!]): [SearchFilterFieldValues!]!
+	statementExport(entityId: ID!, exportTaskId: ID!): StatementExportTask
+	statementExports(entityId: ID!, first: Int, after: String): StatementExportConnection!
+}
+"""
+Why a backed-up recovery kit is stale and must be re-backed up.
+"""
+enum RecoveryKitStaleReason {
+	"""
+	Not stale: the kit is current, or there is no backup.
+	"""
+	UNSPECIFIED
+	"""
+	The entity dropped from two or more Owners to a single Owner. The lone Owner's
+	kit was registered while multi-owner (so it lacks the break-glass recovery-user
+	key) and must be re-backed up to restore offline Emergency Exit.
+	"""
+	OWNER_COUNT_REDUCED
+}
+"""
+Recovery-kit backup status for a member within an entity.
+"""
+type RecoveryKitStatus {
+	"""
+	The user this status is for.
+	"""
+	userId: ID!
+	"""
+	True when the user has backed up an active recovery kit.
+	"""
+	hasBackup: Boolean!
+	"""
+	When the recovery kit was last backed up (most recent backup/reissue). Null
+	when hasBackup is false.
+	"""
+	backedUpAt: Time
+	"""
+	Set when hasBackup is true but the kit is stale and must be re-backed up.
+	UNSPECIFIED when not backed up or the kit is current.
+	"""
+	staleReason: RecoveryKitStaleReason!
+}
+enum RecurrenceBusinessDayPosition {
+	FIRST
+	LAST
+}
+enum RecurrenceEndMode {
+	NEVER
+	ON
+	AFTER
+}
+enum RecurrenceMonth {
+	JANUARY
+	FEBRUARY
+	MARCH
+	APRIL
+	MAY
+	JUNE
+	JULY
+	AUGUST
+	SEPTEMBER
+	OCTOBER
+	NOVEMBER
+	DECEMBER
+}
+enum RecurrenceOrdinal {
+	FIRST
+	SECOND
+	THIRD
+	FOURTH
+}
+enum RecurrencePattern {
+	UNKNOWN
+	WEEKLY_DAYS
+	DAY_OF_MONTH
+	WEEKDAY_OF_MONTH
+	BUSINESS_DAY
+	QUARTER_DAY
+	QUARTER_WEEKDAY
+	QUARTER_BUSINESS_DAY
+	YEARLY_DATE
+}
+type RecurrenceRule {
+	interval: Int!
+	unit: RecurrenceUnit!
+	pattern: RecurrencePattern!
+	weekdays: [RecurrenceWeekday!]!
+	dayOfMonth: Int
+	ordinal: RecurrenceOrdinal
+	weekday: RecurrenceWeekday
+	businessDayPosition: RecurrenceBusinessDayPosition
+	dayOfQuarter: Int
+	quarterOrdinal: RecurrenceOrdinal
+	quarterWeekday: RecurrenceWeekday
+	quarterBusinessDayPosition: RecurrenceBusinessDayPosition
+	yearMonth: RecurrenceMonth
+	yearDay: Int
+	endMode: RecurrenceEndMode!
+	endDate: Time
+	occurrences: Int
+	summary: String!
+}
+enum RecurrenceState {
+	ACTIVE
+	STOPPED
+}
+enum RecurrenceUnit {
+	WEEK
+	MONTH
+	QUARTER
+	YEAR
+}
+enum RecurrenceWeekday {
+	MONDAY
+	TUESDAY
+	WEDNESDAY
+	THURSDAY
+	FRIDAY
+	SATURDAY
+	SUNDAY
+}
+type RemoveUserFromEntityDetails {
+	v: Int!
+	entity: Entity!
+	user: User!
+}
+type RemoveUserFromUserGroupDetails {
+	v: Int!
+	userGroup: UserGroup!
+	user: User!
+}
+"""
+Groups roles by the kind of access they govern.
+"""
+enum RoleCategory {
+	ROLE_CATEGORY_UNSPECIFIED
+	"""
+	Roles that manage an entity's finances and administration.
+	"""
+	ROLE_CATEGORY_FINANCE
+	"""
+	Roles that do not manage entity finances, such as Cardholder.
+	"""
+	ROLE_CATEGORY_NON_FINANCE
+}
+"""
+Confirmation for a Safe transaction.
+"""
+type SafeConfirmation {
+	"""
+	Owner address who confirmed the transaction.
+	"""
+	owner: String!
+	"""
+	When the confirmation was submitted.
+	"""
+	submissionDate: Time!
+	"""
+	Confirmation signature payload.
+	"""
+	signature: String!
+	"""
+	Signature type (e.g., EIP-712).
+	"""
+	signatureType: String!
+}
+type SafeImportDetails {
+	v: Int!
+	"""
+	List of safe addresses to import
+	"""
+	addresses: [String!]!
+}
+"""
+Transfer leg inside a Safe transaction.
+"""
+type SafeTransfer {
+	"""
+	Recipient address for the transfer.
+	"""
+	toAddress: String!
+	"""
+	Raw value being transferred (chain units).
+	"""
+	value: String!
+	"""
+	Optional contract address associated with the transfer.
+	"""
+	contractAddress: String
+	"""
+	Instrument referenced by the transfer, if known.
+	"""
+	instrument: Instrument
+}
+enum ScheduledConvertDirection {
+	CRYPTO_TO_BANKING
+	BANKING_TO_CRYPTO
+	"""
+	Forward-compatibility fallback for a vocabulary value this schema predates.
+	"""
+	UNKNOWN
+}
+"""
+Zero-fee scheduled convert details mirrored onto a transaction. Amounts are
+standard units of the target instrument.
+"""
+type ScheduledConvertInfo {
+	id: ID!
+	direction: ScheduledConvertDirection!
+	delayDays: Int!
+	deliverAt: Time
+	"""
+	Scheduled receive amount in target-instrument standard units.
+	"""
+	scheduledReceiveAmount: String!
+	"""
+	Effective spread selected for this scheduled delivery, rounded UP to whole
+	bps. Prefer appliedFeeBpsExact for display: the ceiling can equal
+	marketSpreadBps and make the scheduling bonus read as zero.
+	"""
+	appliedFeeBps: Int!
+	"""
+	The same effective spread before that rounding, in decimal bps
+	(e.g. "17.1397260273972603"). Ledger derives it from the frozen baseline,
+	APR and delay, so older transactions carry it too as long as they froze a
+	baseline. Null when there is no baseline to derive from, or when the
+	derivation does not reproduce appliedFeeBps -- then only that rounded
+	integer is available.
+	"""
+	appliedFeeBpsExact: String
+	"""
+	Frozen day-zero market spread before the scheduled-delivery bonus.
+	Null for legacy transactions that did not persist the baseline.
+	"""
+	marketSpreadBps: Int
+	"""
+	Outgoing only: last instant the scheduled convert may be canceled.
+	"""
+	cancelDeadline: Time
+	"""
+	Derived by the ledger from the transaction state plus its cancel marker:
+	a canceled convert reads CANCELED even though the underlying transaction
+	is terminally failed. This is the only surface exposing the status; the
+	authoritative scheduled_converts row stays internal to the ledger.
+	"""
+	status: ScheduledConvertStatus!
+}
+enum ScheduledConvertStatus {
+	SCHEDULED
+	EXECUTING
+	COMPLETED
+	CANCELED
+	FAILED
+	"""
+	Forward-compatibility fallback for a vocabulary value this schema predates.
+	"""
+	UNKNOWN
+}
+type SearchFilterFieldValues {
+	field: String!
+	values: [String!]!
+}
+input SearchFilterInput {
+	field: String!
+	operator: SearchFilterOperator!
+	values: [String!]!
+}
+enum SearchFilterOperator {
+	EQ
+	IN
+	GTE
+	LTE
+	BETWEEN
+}
+type SearchGroup {
+	type: SearchType!
+	items: [SearchItem!]!
+}
+union SearchItem = Wallet | BankingAccount | BlockchainAccount | InstrumentAccount | Transaction | ApprovalRecordDetail | Contact
+enum SearchType {
+	ACCOUNTS
+	TRANSACTIONS
+	APPROVALS
+	CONTACTS
+}
+type SendTransactionDetails {
+	v: Int!
+	instrumentAccountId: String
+	walletId: String
+	networkId: String!
+	instrumentId: String!
+	fromAddress: String!
+	toAddress: String
+	amount: String!
+	memo: String
+	notes: String!
+	gasSource: String
+	gasUsdFee: String
+	"""
+	Principal balance bucket signed into the approval. Legacy/unspecified
+	records return null and must not be inferred as WALLET.
+	"""
+	balanceSource: BalanceSource
+	"""
+	Vault identity signed into Smart Balance approvals; null for Wallet Balance.
+	"""
+	smartBalanceVaultId: ID
+	smartBalanceVault: Vault
+	fromTo: FromTo
+	gas: GasInfo
+}
+type SetUserRolesForEntityDetails {
+	v: Int!
+	entity: Entity!
+	user: User!
+	userGroups: [UserGroup!]!
+}
+type SettledMovement {
+	movementId: ID!
+	"""
+	Decimal string preserving the Ledger balance-entry int64 exactly.
+	"""
+	balanceEntryId: String!
+	transactionId: ID!
+	transactionHumanId: String!
+	transactionType: String!
+	transactionState: String!
+	isSpam: Boolean!
+	"""
+	Analysis-only parent fact, frozen for opted-in sessions. Null is unknown or
+	unavailable; false is a known parent of at least USD 1. Historical movement
+	usdValue still uses its posting-date valuation, independently of this fact.
+	"""
+	isSmallBalance: Boolean
+	settledAt: Time
+	accountType: String!
+	accountId: ID!
+	instrumentId: ID!
+	assetSymbol: String!
+	"""
+	Signed integer in the instrument's smallest unit.
+	"""
+	signedAmountSmallest: String!
+	instrumentDecimals: Int!
+	role: SettledMovementRole!
+	"""
+	Observed settlement ownership from Ledger, not a purpose-specific policy decision.
+	"""
+	observedControlBoundary: SettledMovementControlBoundary!
+	observedControlBoundaryProvenance: String!
+	projectionStatus: SettledMovementProjectionStatus!
+	projectionReason: String!
+	"""
+	Explicit-scale USD value. Null means Ledger emitted no valuation object.
+	"""
+	usdValue: SettledMovementMoney
+	valuationStatus: SettledMovementValuationStatus!
+	valuationSource: String!
+	valuationPriceTimestamp: Time
+	ownerType: String!
+	ownerId: ID!
+	"""
+	Distinguishes ordinary Treasury from wallet-attached Smart Balance owners.
+	"""
+	ownerAccountType: String!
+	counterparties: [SettledMovementCounterparty!]!
+}
+type SettledMovementConnection {
+	movements: [SettledMovement!]!
+	nextPageToken: String
+	dataAsOf: Time
+	"""
+	Decimal strings preserve Ledger's int64 snapshot watermarks exactly.
+	"""
+	balanceEntryIdWatermark: String!
+	priceVersionWatermark: String!
+	coverage: SettledMovementCoverage
+}
+type SettledMovementContact {
+	id: ID!
+	name: String!
+}
+type SettledMovementContactAssociation {
+	contact: SettledMovementContact!
+	"""
+	Original zero-based selector position; null for a bank account association.
+	"""
+	selectorIndex: Int
+	"""
+	Exact saved account ID; null for a network-address selector association.
+	"""
+	contactBankAccountId: ID
+}
+enum SettledMovementControlBoundary {
+	UNKNOWN
+	INTERNAL
+	EXTERNAL
+}
+type SettledMovementCounterparty {
+	partyType: String!
+	"""
+	MOVEMENT requires Ledger execution evidence; parent context is not binding.
+	"""
+	relationScope: SettledMovementCounterpartyRelationScope!
+	"""
+	Current address-book associations, resolved only when selected on analysis.
+	These are not transaction-time identities or allocations of the amount.
+	Outside analysis, selection returns an error instead of claiming no matches.
+	Saved bank IDs take precedence. Without an ID, complete structured ACH/Wire
+	coordinates can resolve all exact current saved accounts and their IDs.
+	Maximum 100 eligible lookup sources and 100 deduplicated resolved sources
+	per counterparty. Input overflow errors before lookup; expanded overflow
+	errors before contact hydration. Results are never truncated.
+	"""
+	contactAssociations: [SettledMovementContactAssociation!]
+	externalBank: ExternalBank
+	displayText: String
+	selectors: [SettledMovementCounterpartySelector!]!
+	networkId: ID!
+	networkSlug: String!
+	networkExecutionModel: String!
+	ownership: SettledMovementCounterpartyOwnership!
+	ownershipProvenance: String!
+}
+enum SettledMovementCounterpartyOwnership {
+	UNKNOWN
+	ENTITY_OWNED
+	OTHER_ENTITY_OWNED
+	DECLARED_EXTERNAL
+}
+enum SettledMovementCounterpartyRelationScope {
+	UNKNOWN
+	PARENT_TRANSACTION
+	MOVEMENT
+}
+type SettledMovementCounterpartySelector {
+	type: SettledMovementCounterpartySelectorType!
+	value: String!
+	"""
+	Use with type and counterparty networkId for policy matching.
+	"""
+	canonicalValue: String!
+	"""
+	Current address-book association, not identity at transaction time.
+	"""
+	contact: SettledMovementContact
+}
+enum SettledMovementCounterpartySelectorType {
+	UNKNOWN
+	NETWORK_ADDRESS
+	WALLET
+	BANKING_ACCOUNT
+	CARD_ACCOUNT
+	TREASURY_VAULT
+}
+type SettledMovementCoverage {
+	firstObservedSettledAt: Time
+	lastObservedSettledAt: Time
+	ingestionCoverageProven: Boolean!
+	coverageNote: String!
+	"""
+	Decimal string preserving Ledger's int64 count exactly.
+	"""
+	unpostedPartialTransactionCount: String!
+	"""
+	Ledger caps this diagnostic sample; the count above remains authoritative.
+	"""
+	unpostedPartialTransactionHumanIds: [String!]!
+}
+type SettledMovementMoney {
+	amountMinor: String!
+	currency: String!
+	scale: Int!
+}
+enum SettledMovementProjectionStatus {
+	UNKNOWN
+	PROJECTED
+	AMBIGUOUS
+	INCONSISTENT
+	UNSUPPORTED
+}
+enum SettledMovementRole {
+	UNKNOWN
+	PRINCIPAL
+	REFUND
+	GAS
+	FEE
+	YIELD
+	OTHER
+}
+enum SettledMovementValuationStatus {
+	UNKNOWN
+	EXACT
+	HISTORICAL
+	STALE
+	MISSING
+}
+"""
+Balance and non-USD earnings amounts use underlying-asset standard units.
+Fields suffixed with `Usd` are integer USD cents. Share balance, prices, and
+freshness metadata are included so clients do not need extra Ledger RPCs.
+"""
+type SmartBalance {
+	walletId: ID!
+	vaultId: ID!
+	vault: Vault!
+	label: String!
+	symbol: String!
+	networkId: ID!
+	network: Network!
+	underlyingInstrumentId: ID!
+	underlyingInstrument: Instrument!
+	shareInstrumentId: ID!
+	shareInstrument: Instrument!
+	walletBalance: String!
+	smartBalance: String!
+	totalBalance: String!
+	shareBalance: String!
+	sharePrice: String!
+	assetPrice: String!
+	holdingEarnings: String!
+	historicalEarnings: String!
+	"""
+	Integer USD cents, not decimal dollars.
+	"""
+	holdingEarningsUsd: String!
+	"""
+	Integer USD cents, not decimal dollars.
+	"""
+	historicalEarningsUsd: String!
+	earnedToday: String!
+	"""
+	Integer USD cents, not decimal dollars.
+	"""
+	earnedTodayUsd: String!
+	earnedTodayDate: Time
+	"""
+	The configured vault APY as a decimal fraction. It currently matches
+	fixedApy, but the producer may differentiate the fields in the future.
+	"""
+	apy: String!
+	"""
+	The configured fixed APY as a decimal fraction. It currently matches apy.
+	"""
+	fixedApy: String!
+	"""
+	The observed/current APY as a decimal fraction. Read apyStatus first:
+	only APPLIED indicates a current value; other statuses are not current.
+	"""
+	actualApy: String
+	"""
+	Freshness and availability status for actualApy.
+	"""
+	apyStatus: SmartBalanceApyStatus!
+	apySourceDate: Time
+	apyUpdatedAt: Time
+	sharePriceVersion: String!
+	sharePriceBlockNumber: String!
+	sharePriceTimestamp: Time
+	assetPriceVersion: String!
+	assetPriceTimestamp: Time
+	syncStatus: SmartBalanceSyncStatus!
+	depositEnabled: Boolean!
+	redeemEnabled: Boolean!
+}
+enum SmartBalanceApyStatus {
+	INITIALIZING
+	APPLIED
+	STALE
+	FAILED
+	UNKNOWN
+}
+type SmartBalanceEarningsHistory {
+	treasuryPositionAccountId: ID!
+	treasuryPositionAccount: TreasuryPositionAccount!
+	date: Time!
+	earnedAssetAmount: String!
+	"""
+	Integer USD cents, not decimal dollars.
+	"""
+	earnedAssetAmountUsd: String!
+	closingAssetAmount: String!
+}
+type SmartBalanceEarningsHistoryConnection {
+	histories: [SmartBalanceEarningsHistory!]!
+	cursor: String
+}
+enum SmartBalanceSyncStatus {
+	SYNCED
+	MISSING_PRICE
+	LAGGING
+	UNKNOWN
+}
+type StatementExportAccountSelection {
+	accountType: StatementExportAccountType!
+	accountId: ID!
+}
+enum StatementExportAccountType {
+	UNSPECIFIED
+	WALLET
+	BANKING_ACCOUNT
+	TREASURY_ACCOUNT
+	INSTRUMENT_ACCOUNT
+	TREASURY_POSITION_ACCOUNT
+}
+type StatementExportConnection {
+	tasks: [StatementExportTask!]!
+	cursor: String
+}
+enum StatementExportNotificationStatus {
+	UNSPECIFIED
+	NOT_REQUESTED
+	PENDING
+	SENT
+	FAILED
+}
+type StatementExportPeriod {
+	periodStart: Time!
+	periodEnd: Time!
+}
+type StatementExportSelection {
+	periods: [StatementExportPeriod!]!
+	accounts: [StatementExportAccountSelection!]!
+	assetIds: [ID!]!
+}
+enum StatementExportStatus {
+	UNSPECIFIED
+	CREATED
+	RUNNING
+	COMPLETED
+	FAILED
+	EXPIRED
+}
+type StatementExportTask {
+	id: ID!
+	entityId: ID!
+	status: StatementExportStatus!
+	requesterUserId: ID!
+	notificationEmail: String
+	notificationStatus: StatementExportNotificationStatus!
+	notificationError: String
+	selection: StatementExportSelection!
+	issuedAt: Time
+	templateVersion: String
+	fileName: String
+	fileSizeBytes: Int
+	rowCount: Int
+	failureReason: String
+	startedAt: Time
+	completedAt: Time
+	createdAt: Time!
+	updatedAt: Time!
+}
+type TVLDetail {
+	date: Time!
+	tvl: String!
+	tvlUsd: String!
+}
+enum TaxMode {
+	EXCLUSIVE
+	INCLUSIVE
+}
+"""
+RFC 3339 compliant date-time scalar.
+"""
+scalar Time
+"""
+Represents a total aggregation (all assets combined)
+"""
+type Total {
+	_empty: String!
+}
+"""
+A high-level transaction representing a financial operation
+"""
+type Transaction {
+	id: String!
+	"""
+	Human-readable identifier (e.g., "120125-1AB5")
+	"""
+	humanId: String!
+	isSpam: Boolean!
+	"""
+	The entity this transaction belongs to
+	"""
+	entity: Entity!
+	"""
+	Transaction type (e.g., "transfer", "deposit", "withdrawal", "treasury_deposit", "treasury_withdraw")
+	"""
+	type: String!
+	"""
+	Current state (e.g., "pending", "completed", "failed")
+	"""
+	state: String!
+	createdAt: Time!
+	updatedAt: Time!
+	"""
+	Transaction initiation timestamp
+	"""
+	initiatedAt: Time!
+	"""
+	Transaction completion timestamp (null if not yet completed)
+	"""
+	finishedAt: Time
+	"""
+	Matched invoice summary (if this transaction has an approved invoice match)
+	"""
+	matchedInvoice: TransactionMatchedInvoice
+	"""
+	Counterparty/search display texts derived from persisted transaction metadata.
+	"""
+	counterpartyTexts: [String!]!
+	"""
+	Structured from/to parties captured on ingestion
+	"""
+	fromTo: FromTo
+	"""
+	Gas info for this transaction (if applicable)
+	"""
+	gas: GasInfo
+	"""
+	Metadata for convert transactions (only populated for type="convert")
+	"""
+	convertMetadata: ConvertMetadata
+	"""
+	Metadata for treasury transactions (only populated for type="treasury_deposit" or type="treasury_withdraw")
+	"""
+	treasuryMetadata: TreasuryMetadata
+	"""
+	Optional Card quota purchase business context. The underlying financial
+	Transaction remains send/bank_crypto_withdraw/card_withdraw.
+	"""
+	cardQuotaPurchaseOrder: CardQuotaPurchaseOrder
+	"""
+	Notes captured at initiation time (if provided)
+	"""
+	notes: String
+	"""
+	Associated card id for card-backed transactions
+	"""
+	cardId: ID
+	"""
+	Associated card details for card-backed transactions
+	"""
+	card: Card
+	"""
+	Failure reason returned by ledger when transaction execution fails
+	"""
+	failedReason: String
+	"""
+	User-facing failure explanation normalized to the Fail Reason PRD catalog
+	"""
+	failureExplanation: TransactionFailureExplanation
+	"""
+	Attachments associated with this transaction
+	"""
+	attachments: [TransactionAttachment!]!
+	"""
+	Tags associated with this transaction
+	"""
+	tags: [TransactionTag!]!
+	"""
+	External transactions that implement this transaction
+	"""
+	extTransactions: [ExtTransaction!]!
+	"""
+	Bank-transfer availability for this transaction when it is a banking deposit.
+	"""
+	bankingDepositAvailability: BankingDepositAvailability
+	"""
+	Persisted Banking execution-window metadata for fiat withdrawals.
+	"""
+	bankingExecutionSchedule: BankingWithdrawalExecutionSchedule
+	"""
+	Zero-fee scheduled convert attached to this transaction (present when the
+	transaction was submitted with a scheduled delay; state may be "scheduled").
+	"""
+	scheduledConvert: ScheduledConvertInfo
+}
+type TransactionAttachment {
+	id: ID!
+	name: String!
+	url: String!
+	contentType: String!
+	sizeBytes: Int!
+	uploadedAt: Time
+	uploadedByUserId: ID
+}
+"""
+Paginated transaction results
+"""
+type TransactionConnection {
+	transactions: [Transaction!]!
+	"""
+	Cursor for pagination (null if no more results)
+	"""
+	cursor: String
+}
+enum TransactionFailureAction {
+	VIEW_BALANCE
+	TOP_UP
+	RETRY
+	VIEW_EXPLORER
+	CONTACT_SUPPORT
+	START_NEW
+	COMPLETE_VERIFICATION
+	NONE
+}
+type TransactionFailureExplanation {
+	code: String!
+	title: String!
+	message: String!
+	severity: TransactionFailureSeverity!
+	actions: [TransactionFailureAction!]!
+	source: TransactionFailureExplanationSource!
+	confidence: Float
+}
+enum TransactionFailureExplanationSource {
+	AI
+	RULE
+	FALLBACK
+}
+enum TransactionFailureSeverity {
+	INFO
+	WARNING
+	ERROR
+}
+type TransactionFeeContext {
+	transactionId: ID!
+	"""
+	Current parent transaction, scoped to the authorized analysis Entity.
+	Only stored fields/embedded values are supported through this relationship;
+	independent child resolvers are rejected before transaction loading.
+	"""
+	transaction: Transaction
+	scope: TransactionFeeContextScope!
+	metadataStatus: TransactionFeeMetadataStatus!
+	lines: [TransactionFeeContextLine!]!
+	truncated: Boolean!
+	hasInvalidLines: Boolean!
+	hasUnclassifiedLines: Boolean!
+	attributionUnavailable: Boolean!
+}
+type TransactionFeeContextLine {
+	"""
+	Within a transaction, identity is (recordType, dedupeKey) across pages.
+	"""
+	recordType: String!
+	dedupeKey: String!
+	scenarioKey: String!
+	"""
+	Integer amount and explicit currency/scale, without float conversion.
+	"""
+	amount: SettledMovementMoney!
+	"""
+	Original recorded event time; null means absent.
+	"""
+	occurredAt: Time
+	"""
+	Ledger classification, not evidence of customer payment.
+	"""
+	eligibility: TransactionFeeEligibility!
+	eligibilityBasis: TransactionFeeEligibilityBasis!
+}
+enum TransactionFeeContextScope {
+	UNKNOWN
+	TRANSACTION_METADATA
+}
+"""
+At most 200 contexts and 256 total lines per page, 32 lines per transaction.
+"""
+type TransactionFeeContexts {
+	contexts: [TransactionFeeContext!]!
+	truncated: Boolean!
+}
+enum TransactionFeeEligibility {
+	UNKNOWN
+	RECORDED
+	REVENUE_RECOGNIZABLE
+}
+enum TransactionFeeEligibilityBasis {
+	UNKNOWN
+	TRANSACTION_TERMINAL
+	DIRECT_SEND_FUNDING_CONFIRMED
+}
+enum TransactionFeeMetadataStatus {
+	UNKNOWN
+	MISSING
+	PRESENT
+	INVALID
+}
+"""
+A single leg (debit or credit) in a double-entry bookkeeping transaction
+"""
+type TransactionLeg {
+	id: String!
+	"""
+	The entity this leg belongs to
+	"""
+	entity: Entity!
+	"""
+	The external transaction this leg belongs to
+	"""
+	extTransaction: ExtTransaction!
+	"""
+	The instrument being moved
+	"""
+	instrument: Instrument!
+	"""
+	The account being debited or credited
+	"""
+	account: LegAccount!
+	"""
+	"credit" or "debit"
+	"""
+	direction: String!
+	"""
+	Amount being moved
+	"""
+	amount: String!
+	createdAt: Time!
+	balanceBucket: BalanceBucket!
+	smartBalanceVaultId: ID
+	smartBalanceVault: Vault
+}
+type TransactionMatchedInvoice {
+	id: ID!
+	invoiceNumber: String!
+	customerName: String!
+	amountDue: String!
+	currency: String!
+	createdAt: Time!
+}
+"""
+Aggregated transaction stats for an entity
+"""
+type TransactionStats {
+	moneyInUsd: String!
+	moneyOutUsd: String!
+	netUsd: String!
+}
+"""
+Tag assigned to transactions in an entity.
+"""
+type TransactionTag {
+	id: ID!
+	entity: Entity!
+	name: String!
+}
+"""
+Treasury account owner
+"""
+type TreasuryAccount {
+	id: ID!
+}
+"""
+Metadata specific to treasury transactions (only populated for type="treasury_deposit" or type="treasury_withdraw")
+"""
+type TreasuryMetadata {
+	asset: Asset!
+	assetAmount: String!
+}
+type TreasuryPositionAccount {
+	id: ID!
+	entityId: ID!
+	vault: Vault!
+	pendingRedemptions: [TreasuryProviderRedemption!]!
+	redemptions(first: Int): [TreasuryProviderRedemption!]!
+	shareAmount: String!
+	sharePrice: String!
+	investedInAssets: String!
+	currentValueInAssets: String!
+	unrealizedProfitInAssets: String!
+	investedInUSD: String!
+	currentValueInUSD: String!
+	unrealizedProfitInUSD: String!
+	currentAPY: String!
+}
+type TreasuryPositionAccountSummary {
+	investedInAssets: String!
+	currentValueInAssets: String!
+	unrealizedProfitInAssets: String!
+	totalEarned: String!
+	totalEarnedInUSD: String!
+	investedInUSD: String!
+	currentValueInUSD: String!
+	unrealizedProfitInUSD: String!
+	averageAPY: String!
+}
+type TreasuryProviderRedemption {
+	id: ID!
+	provider: String!
+	transactionId: ID!
+	positionId: ID!
+	controllerAddress: String!
+	vaultAddress: String!
+	shareAmount: String!
+	fulfilledTxHash: String
+	fulfilledAt: Time
+	createdAt: Time!
+	updatedAt: Time!
+	positionTransaction: Transaction!
+}
+"""
+A single USD balance snapshot at a point in time
+"""
+type USDBalanceSnapshot {
+	"""
+	Timestamp when this balance snapshot was recorded
+	"""
+	snapshotTimestamp: Time!
+	"""
+	USD balance amount at this timestamp
+	"""
+	usdAmount: String!
+}
+"""
+Public user information.
+"""
+type User {
+	id: ID!
+	name: String!
+	"""
+	Public email address for the user.
+	"""
+	email: String!
+	"""
+	Optional avatar image URL for the user.
+	"""
+	avatarImage: String
+}
+"""
+Paginated users payload.
+"""
+type UserConnection {
+	"""
+	Page of users.
+	"""
+	users: [User!]!
+	"""
+	Opaque cursor for fetching the next page.
+	"""
+	cursor: String
+}
+"""
+Permission group within an entity that can contain multiple users.
+"""
+type UserGroup {
+	"""
+	Stable user group identifier returned by the backend.
+	"""
+	id: ID!
+	"""
+	Entity that this user group belongs to.
+	"""
+	entity: Entity!
+	"""
+	Human-readable name for the user group.
+	"""
+	name: String!
+	"""
+	True if this group was created by a user, false if system-created.
+	"""
+	userCreated: Boolean!
+	"""
+	Role category (finance vs non-finance) for this group.
+	"""
+	category: RoleCategory!
+	"""
+	RFC 3339 timestamp for when the user group was created.
+	"""
+	createdAt: Time!
+	"""
+	List of permissions assigned to this user group.
+	"""
+	permissions: [Permission!]!
+	"""
+	Users who are part of this group.
+	"""
+	users(first: Int, after: String): UserConnection!
+}
+"""
+Association between a user and a user group within an entity.
+"""
+type UserGroupMembership {
+	"""
+	The user who is a member of this group.
+	"""
+	user: User!
+	"""
+	The user group this membership belongs to.
+	"""
+	userGroup: UserGroup!
+	"""
+	RFC 3339 timestamp for when the user joined this group.
+	"""
+	createdAt: Time!
+}
+type Vault {
+	id: ID!
+	logicalVaultId: ID!
+	isDepositTarget: Boolean!
+	withdrawPriority: Int!
+	yieldId: String!
+	provider: VaultProvider!
+	name: String!
+	description: String!
+	shortDescription: String!
+	historyLevel: String!
+	riskTier: VaultRiskTier!
+	riskReason: String!
+	vaultType: VaultType!
+	score: String!
+	protocol: VaultProtocol
+	underlyingInstrument: Instrument!
+	supportedInstruments: [Instrument!]!
+	holders: Int!
+	tvl: String!
+	tvlUsd: String!
+	apy: String!
+	redemptionPeriodSeconds: Int!
+	depositMeta: [VaultDepositMeta!]!
+	withdrawMeta: [VaultWithdrawMeta!]!
+	performance(startTime: Time!, endTime: Time!): VaultPerformance!
+}
+type VaultDepositMeta {
+	instrumentId: ID
+	assetAddress: String!
+	feeBps: Int!
+	feePercentage: String!
+	depositable: Boolean!
+}
+type VaultPerformance {
+	apys: [APYDetail!]!
+	tvls: [TVLDetail!]!
+}
+type VaultProtocol {
+	id: ID!
+	name: String!
+	logoUrl: String!
+}
+enum VaultProvider {
+	VAULT_PROVIDER_UNSPECIFIED
+	VAULT_PROVIDER_YIELDXYZ
+	VAULT_PROVIDER_NEST
+	VAULT_PROVIDER_PAXOSLABS
+	VAULT_PROVIDER_REAH
+}
+enum VaultRiskTier {
+	UNKNOWN
+	CONSERVATIVE
+	BALANCED
+	ADVENTUROUS
+}
+enum VaultType {
+	UNKNOWN
+	RWA
+	DEFI
+}
+type VaultWithdrawMeta {
+	instrumentId: ID
+	assetAddress: String!
+	feeBps: Int!
+	feePercentage: String!
+	withdrawable: Boolean!
+	minOrderSizeRaw: String!
+	minOrderSizeFormatted: String!
+	minOrderSizeDecimals: Int!
+	withdrawDelaySeconds: Int
+}
+"""
+A wallet that can hold multiple blockchain accounts across different networks
+"""
+type Wallet {
+	id: ID!
+	"""
+	Human-readable identifier (e.g., "W-001")
+	"""
+	humanId: String!
+	"""
+	The entity that owns this wallet
+	"""
+	entity: Entity!
+	"""
+	Display name for the wallet
+	"""
+	name: String!
+	"""
+	The backend provider managing this wallet
+	"""
+	backend: Backend!
+	"""
+	External reference ID in the backend system
+	"""
+	backendRef: String!
+	"""
+	Current state of the wallet
+	"""
+	state: WalletState!
+	type: WalletType!
+	"""
+	Hex color code for the wallet (e.g., "#FF5733")
+	"""
+	color: String!
+	createdAt: Time!
+	"""
+	All blockchain accounts associated with this wallet
+	"""
+	blockchainAccounts: [BlockchainAccount!]!
+	"""
+	Total balance across all accounts in USD
+	"""
+	totalBalance: Balance!
+	"""
+	Balance for a specific instrument
+	"""
+	instrumentBalance(instrumentID: ID!): Balance!
+	"""
+	Balance aggregated by network
+	"""
+	networkBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Standard Wallet + wallet-attached Smart Balance, aggregated by network.
+	Use networkBalances when only the Standard Wallet execution bucket is needed.
+	"""
+	generalNetworkBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Balance aggregated by asset
+	"""
+	assetBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Balance aggregated by instrument
+	"""
+	instrumentBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Standard Wallet + wallet-attached Smart Balance, aggregated by instrument.
+	Use instrumentBalances when only the Standard Wallet execution bucket is needed.
+	"""
+	generalInstrumentBalances(first: Int, after: String): BalanceConnection!
+	"""
+	Transaction history for this wallet
+	"""
+	transactions(first: Int, after: String): TransactionConnection!
+	"""
+	Historical USD balance over time for this wallet
+	"""
+	historicalBalance(lastDays: Int!): HistoricalBalance!
+	"""
+	Smart Balance is supported only for Turnkey wallets. Other wallet backends
+	return an empty list without calling Ledger.
+	"""
+	smartBalances: [SmartBalance!]!
+	"""
+	vaultId is retained as an optional staged-rollout argument for existing
+	clients. History ownership is always scoped by the parent wallet.
+	"""
+	smartBalanceEarningsHistories(vaultId: ID, first: Int = 30, after: String): SmartBalanceEarningsHistoryConnection!
+}
+type WalletCreateDetails {
+	v: Int!
+	"""
+	Display name for the wallet
+	"""
+	name: String!
+	"""
+	Color hex code for wallet display
+	"""
+	colorHex: String!
+	walletType: WalletType!
+}
+type WalletDeleteDetails {
+	v: Int!
+	"""
+	ID of the wallet being deleted
+	"""
+	walletId: String!
+	"""
+	Display name for the wallet at deletion
+	"""
+	name: String!
+	"""
+	Color hex code for wallet display at deletion
+	"""
+	colorHex: String!
+}
+type WalletEditDetails {
+	v: Int!
+	"""
+	ID of the wallet being edited
+	"""
+	walletId: String!
+	"""
+	New display name for the wallet
+	"""
+	name: String!
+	"""
+	New color hex code for wallet display
+	"""
+	colorHex: String!
+}
+"""
+State of a wallet
+"""
+enum WalletState {
+	"""
+	State not specified
+	"""
+	UNSPECIFIED
+	"""
+	Wallet is being synced after import
+	"""
+	PENDING
+	"""
+	Wallet is fully synced and active
+	"""
+	ACTIVE
+}
+enum WalletType {
+	UNSPECIFIED
+	NORMAL_WALLET
+	SMART_WALLET
+}
+"""
+The inverse of AddSmartBalanceDetails: the underlying asset leaves
+treasuryPositionAccountId and lands in instrumentAccountId, an Instrument
+Account of walletId. It is a distinct type rather than a direction flag on
+the add snapshot so an approval UI cannot render a withdraw as an add, and so
+the signed approval intent -- which carries no operation type and binds the
+operation family through the populated details member -- commits to the
+direction of the fund movement.
+"""
+type WithdrawSmartBalanceDetails {
+	v: Int!
+	entityId: String!
+	entity: Entity!
+	walletId: String!
+	wallet: Wallet
+	vaultId: String!
+	vault: Vault
+	networkId: String!
+	network: Network
+	instrumentId: String!
+	instrument: Instrument
+	"""
+	Destination account credited with the redeemed underlying asset.
+	"""
+	instrumentAccountId: String!
+	instrumentAccount: InstrumentAccount
+	"""
+	Underlying amount in instrument standard units, not smallest units. Members
+	of this union differ on that convention, so do not carry the assumption
+	across from another details type.
+	"""
+	assetAmount: String!
+	notes: String
+	gasSource: String
+	gasUsdFee: String
+	gas: GasInfo
+	treasuryAccountId: String!
+	treasuryBlockchainAccountId: String!
+	"""
+	Source position the shares are redeemed from.
+	"""
+	treasuryPositionAccountId: String!
+}
+type YieldHistory {
+	date: Time!
+	yield: String!
+}
+type YieldHistoryConnection {
+	histories: [YieldHistory!]!
+	cursor: String
+}

@@ -1,0 +1,32 @@
+{
+  "name": "reah",
+  "version": "0.1.0",
+  "description": "Explore and analyze your Reah financial data with read-only tools for balances, accounts, transactions, settled cashflow, cards, invoices and treasury.",
+  "author": {
+    "name": "ReahPlatform"
+  },
+  "repository": "https://github.com/ReahPlatform/reah-mcp",
+  "license": "LicenseRef-Proprietary",
+  "keywords": [
+    "reah",
+    "finance",
+    "banking",
+    "mcp",
+    "read-only"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Reah",
+    "shortDescription": "Read-only Reah financial data",
+    "developerName": "ReahPlatform",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Show our balances across wallets, banking and treasury.",
+      "Analyze last month\u2019s settled cashflow."
+    ]
+  }
+}

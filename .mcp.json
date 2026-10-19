@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "reah": {
+      "command": "reah-mcp"
+    }
+  }
+}

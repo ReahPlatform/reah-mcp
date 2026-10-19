@@ -1,0 +1,6 @@
+/bin/
+.env
+.env.*
+!.env.example
+/internal/schema/source/
+__pycache__/
