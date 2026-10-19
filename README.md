@@ -97,8 +97,9 @@ instances. The HTTP token is not an OAuth access token.
 | `reah_list_assets` / `reah_search` | Asset catalog and financial object search |
 | `reah_query` | Custom GraphQL queries within the allowed read schema |
 
-List tools accept `arguments` for GraphQL arguments and optional `fields` for
-result selections:
+List tools accept reviewed GraphQL `arguments` and optional `fields` for
+result selections. `reah_describe_type` lists the public arguments and their
+defaults; upstream fields and filters outside this contract are not exposed:
 
 ```json
 {"arguments":{"first":100,"after":"PREVIOUS_CURSOR"},"fields":"transactions { id humanId type state } cursor"}
@@ -134,18 +135,36 @@ to inspect `Query`, `Entity`, or a result type before selecting additional field
 
 ## Data semantics and boundaries
 
-- Returns raw GraphQL `data` and `errors`, preserving decimal strings, cursors,
-  settled coverage, and exclusion counts. Missing amounts are not converted to
-  zero. Partial errors set MCP `isError: true` while preserving returned data.
-- Monetary units follow the upstream fields. Decode `usdValue.amountMinor`
-  using `scale`, and `signedAmountSmallest` using `instrumentDecimals`. Read
-  field descriptions before comparing treasury values, card limits, or balances.
-  Use exact decimal arithmetic.
+- Exposes an explicit allowlist of reviewed fields and arguments. Undocumented
+  prices, quotes, financial breakdowns, and other unreviewed upstream fields
+  are absent from both the packaged schema and discovery results.
+- Every read returns raw GraphQL `data` / `errors`, `field_semantics` for its
+  selections, and exact `normalized_values` keyed by JSON Pointer. Raw decimal
+  strings, cursors, coverage, and exclusion counts stay intact. Use normalized
+  `amount` and `currency` for display/calculation; never apply a second unit
+  conversion. `source_scale` describes the conversion from the raw value.
+- USD balance and Treasury raw amounts are cents, including fractional cents.
+  Invoice `amountDueUsd` is already dollars. Native balances and Treasury asset
+  values are already major asset units. Settled movement amounts use their
+  explicit `instrumentDecimals` or `scale`. Conversions use decimal strings,
+  without floating-point rounding, and preserve negative amounts.
+- APYs are decimal fractions: `0.05` means 5%. Normalized `percent` is already
+  multiplied by 100. Position `currentAPY` is Utilized APY, `Vault.apy` is the
+  current product APY, and summary `averageAPY` is a position-weighted average
+  of product APYs. These measures are not interchangeable.
+- Custom selections must include the currency, scale, or underlying-asset
+  companions documented by their contracts. Aliases, fragments, and conditional
+  selections are supported. Unrecognized upstream shapes, units, enum values,
+  or unsupported card currencies fail the read instead of publishing ambiguous
+  values. The current card amount contract is USD with two decimal places.
+- Null and legacy unavailable invoice valuations never become zero. Partial
+  GraphQL errors set MCP `isError: true` while preserving interpretable data.
+  See the [data contract](docs/data-contract.md) for examples and source evidence.
 - Ordinary transaction lists include multiple lifecycle states. Use settled
   movements to analyze actual cashflow; raw transactions cannot substitute for
   a settled ledger.
-- Reuses the Agent's read API contracts and pinned schema. Agent normalization
-  helpers, financial calculation policies, spam-safe balance normalization,
+- Reuses the Agent's read API contracts, pinned schema and reviewed unit
+  evidence. Financial calculation policies, spam-safe balance normalization,
   evidence admission, LLM execution, Temporal workflows, browser automation,
   and approval execution are outside this service. `totalBalance` is an upstream
   observation, not the Agent's normalized balance summary.
@@ -169,15 +188,18 @@ make test
 make build
 ```
 
-Checks cover all business tools, MCP and HTTP authentication, rejected queries
-before network access, entity scope, pagination, precision, partial errors,
-response limits, and redirects. Tests use a local mock GraphQL service; live
+Checks cover all business tools, MCP and HTTP authentication, the public field
+allowlist, unit contracts, exact high-precision conversions, aliases/fragments,
+nulls, partial errors, entity scope, pagination, response limits, and redirects.
+Tests use a local mock GraphQL service; live
 integration testing requires environment-specific credentials.
 
 [docs/upstream.json](docs/upstream.json) records the pinned `reah-agent`
 [commit](https://github.com/ReahPlatform/reah-agent/commit/474fda4a771289782c5f9e793a4f0c33e7076f79)
-and SHA-256 hashes of its schema sources. After updating the pin, run
-`make schema` to extract allowed fields and reachable types from the specified
-commit in the adjacent `../reah-agent` checkout. Hash mismatches fail generation.
+and SHA-256 hashes of its schema sources and semantic registry. After updating
+the pin, run `make schema` to extract only reviewed public fields and reachable
+types from the specified commit in the adjacent `../reah-agent` checkout. New
+upstream fields are never admitted automatically. Hash mismatches, missing
+reviewed fields, or argument drift fail generation.
 Raw mutation schemas are not packaged. This service does not use a database,
 sqlc, or copied sqlc output.

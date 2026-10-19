@@ -48,5 +48,9 @@
     "internal/tools/sandbox/testdata/graphql_schema/transaction.graphql": "9ae294c60d1a2c25450ef8f357f6ff6d7fa60e754977196a247098b21b06c383",
     "internal/tools/sandbox/testdata/graphql_schema/treasury.graphql": "6acff313633b7fe8326b81ce64f9b44ed770f41e70aa2c3f6d3a4163e608f5d5",
     "internal/tools/sandbox/testdata/graphql_schema/user.graphql": "efb0f48da96ae6e1e59d4cf444dc205605aa1a45032bf4a268b3e4116c1a91fe"
+  },
+  "semantic_registry": {
+    "path": "internal/tools/capabilities/assets/registry.json",
+    "sha256": "ba9b7aa4a6b27eedc8ea621155782ec793fb1544703a71236f0bd04a09a1dbb3"
   }
 }

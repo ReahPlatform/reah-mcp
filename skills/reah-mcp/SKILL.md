@@ -7,7 +7,9 @@ metadata:
 
 Use the connected Reah MCP server for the configured entity. Start with
 `reah_catalog` to see scope and return types. Use `reah_describe_type` when a
-field, argument, filter, unit, or enum is unclear; its schema is local and pinned.
+field, argument, unit, or enum needs explanation; its schema is local and pinned.
+Only reviewed public fields and arguments are exposed. Never invent a field or
+assume that the upstream API's broader schema is available through this server.
 
 Business read tools take `arguments` and optional `fields`. Put GraphQL field
 selections inside `fields`, without the outer result braces. Required input
@@ -34,15 +36,28 @@ nested `cards.cursor`; use `fields` to select the next page of that connection.
 If pagination stops early, report the bounds of the data actually read. Search
 matches are not a complete population, even if the result includes a total.
 
-Keep monetary values as exact decimal strings. Decode `amountMinor` with its
-`scale`, and `signedAmountSmallest` with `instrumentDecimals`. Check the schema's
-unit comments before comparing Treasury amounts, card limits or valuations.
-Never substitute zero for missing amounts. Do calculations with exact decimal
-arithmetic and cite the window, filters and data timestamp where available.
+Every read returns `field_semantics` and `normalized_values`. Use normalized
+`amount` and `currency` as exact decimal strings for display and calculations.
+Paths are JSON Pointers into raw `data`, with array indices; metadata paths use
+`*` for array items. `source_scale` describes the raw-to-major-unit conversion.
+Never divide normalized amounts again. Never substitute zero for missing/null
+or explicitly unavailable amounts.
 
-Tools return raw GraphQL data and errors. A response with `isError: true` may
+Raw balance and Treasury USD values are cents, including fractional cents;
+invoice `amountDueUsd` is already dollars. Native balances and Treasury asset
+values are already major asset units. Settled postings use their explicit scale
+or instrument decimals. Custom queries must select the required currency,
+scale, and underlying-asset companions, even when they are aliased or fragmented.
+
+APYs are decimal fractions: raw `0.05` means 5%. Normalized `percent` is already
+multiplied by 100; do not multiply it again. Position `currentAPY` is Utilized
+APY, while `vault.apy` is current product APY. Summary `averageAPY` is weighted
+product APY, not average Utilized APY. Do not substitute one rate for another.
+Use exact decimal arithmetic and cite the window, filters and data timestamp.
+
+Tools preserve raw GraphQL data and errors alongside the unit contract. A response with `isError: true` may
 contain partial data; explain the limitation before making aggregate claims.
-Mask bank account numbers and use the card's `last4` in user-facing reports.
+Use the card's `last4` in user-facing reports.
 
 The server exposes no payments, approvals, edits, report generation, uploads,
 browser automation, or card PAN/CVV reads. It also does not expose the Agent's

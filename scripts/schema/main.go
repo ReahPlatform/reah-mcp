@@ -35,12 +35,35 @@ func run(repo string) error {
 		return err
 	}
 	var pin struct {
-		Commit string            `json:"commit"`
-		Files  map[string]string `json:"schema_files_sha256"`
+		Commit           string            `json:"commit"`
+		Files            map[string]string `json:"schema_files_sha256"`
+		SemanticRegistry struct {
+			Path   string `json:"path"`
+			SHA256 string `json:"sha256"`
+		} `json:"semantic_registry"`
 	}
 	if err := json.Unmarshal(data, &pin); err != nil {
 		return err
 	}
+	registry, err := exec.Command("git", "-C", repo, "show", pin.Commit+":"+pin.SemanticRegistry.Path).Output()
+	if err != nil {
+		return fmt.Errorf("read semantic registry: %w", err)
+	}
+	digest := sha256.Sum256(registry)
+	if hex.EncodeToString(digest[:]) != pin.SemanticRegistry.SHA256 {
+		return fmt.Errorf("upstream semantic registry hash mismatch")
+	}
+	var contracts struct {
+		Fields map[string]json.RawMessage `json:"schema_field_semantics"`
+	}
+	if err := json.Unmarshal(registry, &contracts); err != nil {
+		return err
+	}
+	contractJSON, err := json.Marshal(contracts.Fields)
+	if err != nil {
+		return err
+	}
+	publicFields := readschema.ContractsFromSource(contractJSON)
 	paths := make([]string, 0, len(pin.Files))
 	for p := range pin.Files {
 		if strings.HasSuffix(p, ".graphql") {
@@ -75,6 +98,7 @@ func run(repo string) error {
 			defs[ext.Name] = ext
 		}
 	}
+	admittedFields := map[string]bool{}
 	for name, d := range defs {
 		if d.Description == "" {
 			d.Description = commentText(d.AfterDescriptionComment)
@@ -82,6 +106,10 @@ func run(repo string) error {
 		d.Directives = nil
 		var fields ast.FieldList
 		for _, f := range d.Fields {
+			contract, admitted := publicFields[name+"."+f.Name]
+			if !admitted {
+				continue
+			}
 			if name == "User" && f.Name != "id" && f.Name != "name" && f.Name != "email" && f.Name != "avatarImage" {
 				continue
 			}
@@ -91,19 +119,28 @@ func run(repo string) error {
 			if name == "Query" && readschema.RootScopes[f.Name] == "" {
 				continue
 			}
-			if name == "Entity" && !readschema.EntityFields[f.Name] {
-				continue
-			}
-			f.Directives = nil
-			if f.Description == "" {
-				f.Description = commentText(f.AfterDescriptionComment)
-			}
-			for _, a := range f.Arguments {
-				a.Directives = nil
-				if a.Description == "" {
-					a.Description = commentText(a.AfterDescriptionComment)
+			admittedFields[name+"."+f.Name] = true
+			for arg := range contract.Arguments {
+				if f.Arguments.ForName(arg) == nil {
+					return fmt.Errorf("contract names nonexistent argument %s.%s(%s)", name, f.Name, arg)
 				}
 			}
+			f.Directives = nil
+			f.Description = contract.Description
+			var arguments ast.ArgumentDefinitionList
+			for _, a := range f.Arguments {
+				description, admitted := contract.Arguments[a.Name]
+				if !admitted {
+					if a.Type.NonNull && a.DefaultValue == nil {
+						return fmt.Errorf("required argument %s.%s(%s) has no contract", name, f.Name, a.Name)
+					}
+					continue
+				}
+				a.Directives = nil
+				a.Description = description
+				arguments = append(arguments, a)
+			}
+			f.Arguments = arguments
 			fields = append(fields, f)
 		}
 		d.Fields = fields
@@ -113,9 +150,24 @@ func run(repo string) error {
 				v.Description = commentText(v.AfterDescriptionComment)
 			}
 		}
+		var members []string
+		for _, member := range d.Types {
+			for key := range publicFields {
+				if strings.HasPrefix(key, member+".") {
+					members = append(members, member)
+					break
+				}
+			}
+		}
+		d.Types = members
+	}
+	for key := range publicFields {
+		if !admittedFields[key] {
+			return fmt.Errorf("reviewed field %s is missing from pinned upstream schema", key)
+		}
 	}
 	for name := range readschema.RootScopes {
-		if defs["Query"].Fields.ForName(name) == nil {
+		if _, admitted := publicFields["Query."+name]; admitted && defs["Query"].Fields.ForName(name) == nil {
 			return fmt.Errorf("missing allowed root %s", name)
 		}
 	}
@@ -181,6 +233,23 @@ func run(repo string) error {
 	lines := strings.Split(buf.String(), "\n")
 	for i, line := range lines {
 		lines[i] = strings.TrimRight(line, " \t")
+	}
+	retained := map[string]json.RawMessage{}
+	for key, value := range contracts.Fields {
+		typeName, fieldName, ok := strings.Cut(key, ".")
+		if ok && seen[typeName] && defs[typeName] != nil && defs[typeName].Fields.ForName(fieldName) != nil {
+			retained[key] = value
+		}
+	}
+	if len(retained) == 0 {
+		return fmt.Errorf("no reachable upstream field semantics")
+	}
+	semantics, err := json.MarshalIndent(retained, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile("internal/schema/source_semantics.json", append(semantics, '\n'), 0o644); err != nil {
+		return err
 	}
 	return os.WriteFile("internal/schema/readonly.graphql", []byte(strings.Join(lines, "\n")), 0o644)
 }

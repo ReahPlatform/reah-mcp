@@ -22,11 +22,11 @@ type Surface struct {
 	Selection   string
 }
 
-// Each surface is a raw upstream read; it does not claim the agent's normalized
-// units, financial policies or evidence-admission guarantees.
+// Each surface uses only reviewed public fields. Exact unit conversions are
+// attached separately from raw upstream data; they do not imply spendability.
 var Surfaces = []Surface{
 	{"reah_get_entity", "entity", true, "Current entity identity and point-in-time balance.", "id name type state totalBalance { usdAmount priceVersion }"},
-	{"reah_list_balances", "instrumentBalances", false, "Balance page by instrument; preserve native and USD units and follow cursor.", "balances { nativeAmount usdAmount priceVersion aggregation { __typename ... on Instrument { id } } } cursor"},
+	{"reah_list_balances", "instrumentBalances", false, "Balance page by instrument. USD raw values are cents; use normalized_values for major-unit amounts. Follow cursor.", "balances { nativeAmount usdAmount priceVersion aggregation { __typename ... on Asset { id symbol } ... on Instrument { id decimals asset { id symbol } } } } cursor"},
 	{"reah_list_wallets", "wallets", false, "Wallet roster and balances.", "id humanId name state totalBalance { usdAmount }"},
 	{"reah_list_banking_accounts", "bankingAccounts", false, "Banking account roster and balances.", "id humanId name state provider totalBalance { usdAmount }"},
 	{"reah_list_transactions", "transactions", false, "Transaction page, including lifecycle state. This is not a settled cashflow ledger.", "transactions { id humanId type state initiatedAt finishedAt notes counterpartyTexts } cursor"},
@@ -36,16 +36,16 @@ var Surfaces = []Surface{
 	{"reah_list_approvals", "approvalRecords", false, "Approval records and current state. No approval decisions or execution.", "records { summary { id humanId status type initiatedAt completedAt } } cursor"},
 	{"reah_list_card_accounts", "cardAccounts", false, "Card accounts, balances and a first page of masked cards. Follow each nested cards.cursor using a custom fields selection. PAN/CVV reads are excluded.", "id totalBalance { usdAmount } cards(first:100) { cards { id nickname last4 status limitAmountMinor limitFrequency } cursor }"},
 	{"reah_list_card_transactions", "cardTransactions", true, "Card transaction page scoped to configured entity.", "transactions { transactionId merchantName amountMinor currency transactionType uiStatus initiatedAt } cursor"},
-	{"reah_list_treasury_positions", "treausryPositionAccounts", false, "Treasury positions, values, yield and APY in upstream units.", "id entityId currentValueInAssets currentValueInUSD investedInUSD unrealizedProfitInUSD currentAPY"},
+	{"reah_list_treasury_positions", "treausryPositionAccounts", false, "Treasury positions. USD raw values are cents. currentAPY is position Utilized APY; vault.apy is current product APY. Both are decimal fractions; use normalized_values.percent for percentages.", "id entityId currentValueInAssets currentValueInUSD investedInUSD unrealizedProfitInUSD currentAPY vault { id name apy underlyingInstrument { id decimals asset { id symbol } } }"},
 	{"reah_list_statements", "statementExports", true, "Existing statement export tasks and metadata only. Does not generate exports or download URLs.", "tasks { id status fileName rowCount createdAt completedAt } cursor"},
 	{"reah_list_members", "userMemberships", false, "Entity member page.", "memberships { user { id name email } joinedAt } cursor"},
-	{"reah_list_assets", "assets", false, "Available asset catalog page.", "assets { id } cursor"},
+	{"reah_list_assets", "assets", false, "Asset identities, symbols and default precision. Specific instrument decimals take precedence over asset defaults.", "assets { id name symbol fiat defaultDecimals } cursor"},
 	{"reah_search", "globalSearch", true, "Search permitted accounts, transactions, approvals and contacts. Requires query in arguments; results are search matches, not complete rosters.", "query total groups { type items { __typename ... on Wallet { id name } ... on BankingAccount { id name } ... on Transaction { transactionId: id humanId type state } ... on Contact { id name } ... on ApprovalRecordDetail { summary { id humanId status } } ... on BlockchainAccount { id } ... on InstrumentAccount { id } } }"},
 }
 
 type ReadInput struct {
 	Fields    string         `json:"fields,omitempty" jsonschema:"Optional GraphQL field selection inside the result, without outer braces. Defaults to a concise business selection. Use reah_describe_type first for additional fields and units."`
-	Arguments map[string]any `json:"arguments,omitempty" jsonschema:"GraphQL arguments for this surface, e.g. first=100, after=cursor, filters, settledFrom and settledTo. Entity scope is server-controlled. Use reah_describe_type to discover argument types."`
+	Arguments map[string]any `json:"arguments,omitempty" jsonschema:"GraphQL arguments for this surface, e.g. first=100, after=cursor, settledFrom and settledTo. Entity scope is server-controlled. Use reah_describe_type to discover argument types."`
 }
 
 type QueryInput struct {
@@ -62,7 +62,7 @@ func tool(name, description string) *mcp.Tool {
 }
 
 func New(client *gateway.Client) (*mcp.Server, error) {
-	s := mcp.NewServer(&mcp.Implementation{Name: "reah-mcp", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: "Read-only Reah financial data, bound to one configured user credential and entity. Start with reah_catalog and reah_describe_type. Follow every returned cursor before claiming complete coverage. Keep amounts as decimal strings and preserve raw units. Queries return raw GraphQL data and errors, not agent-normalized evidence. Never treat missing data as zero."})
+	s := mcp.NewServer(&mcp.Implementation{Name: "reah-mcp", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: "Read-only Reah financial data, bound to one configured user credential and entity. Only reviewed fields are exposed. Every read includes field_semantics and exact normalized_values keyed by JSON Pointer. Use normalized_values.amount and currency for display/calculation; raw data stays in upstream units. USD balance and Treasury raw amounts are cents; invoice amountDueUsd is already dollars. APYs are decimal fractions; normalized_values.percent is already multiplied by 100. Never convert normalized amounts again. Start with reah_catalog and reah_describe_type; select all required currency/scale companions for custom queries. Follow every cursor before claiming complete coverage. Do not sum overlapping balance views or substitute transaction lists for settled cashflow. Missing/null/legacy unavailable data is never zero. Unit conversion does not establish spendability or evidence completeness."})
 	mcp.AddTool(s, tool("reah_catalog", "List available read surfaces, GraphQL return types and configured entity."), func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, any, error) {
 		var entries []map[string]any
 		for _, surface := range Surfaces {
@@ -73,13 +73,23 @@ func New(client *gateway.Client) (*mcp.Server, error) {
 			f := parent.Fields.ForName(surface.Field)
 			entries = append(entries, map[string]any{"tool": surface.Name, "field": surface.Field, "parent_type": parent.Name, "return_type": f.Type.String(), "description": surface.Description})
 		}
-		return nil, map[string]any{"entity_id": client.EntityID, "surfaces": entries}, nil
+		return nil, map[string]any{"entity_id": client.EntityID, "surfaces": entries, "value_contract": "Raw data preserves upstream units. field_semantics documents every selected field. normalized_values uses JSON Pointer paths, exact decimal strings, explicit units/currency/scale and APY percentages. Never apply a second conversion. Only reviewed fields are discoverable and queryable."}, nil
 	})
 	mcp.AddTool(s, tool("reah_describe_type", "Describe a local pinned read schema type, its fields, arguments and available unit documentation. Makes no upstream request."), func(_ context.Context, _ *mcp.CallToolRequest, in DescribeInput) (*mcp.CallToolResult, any, error) {
 		text, err := readschema.Describe(client.Schema, in.Type)
-		return nil, map[string]any{"definition": text}, err
+		if err != nil {
+			return nil, nil, err
+		}
+		contracts := map[string]readschema.FieldContract{}
+		for _, field := range client.Schema.Types[in.Type].Fields {
+			key := in.Type + "." + field.Name
+			if contract, ok := readschema.PublicFields[key]; ok {
+				contracts[key] = contract
+			}
+		}
+		return nil, map[string]any{"definition": text, "field_semantics": contracts}, err
 	})
-	mcp.AddTool(s, tool("reah_query", "Execute one validated, entity-bound query across the permitted read surfaces. Mutations, subscriptions and unrelated query roots are rejected."), func(ctx context.Context, _ *mcp.CallToolRequest, in QueryInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, tool("reah_query", "Execute one validated, entity-bound query across the permitted read surfaces. Returns raw data, field_semantics and exact normalized_values. Mutations, subscriptions and fields without reviewed contracts are unavailable."), func(ctx context.Context, _ *mcp.CallToolRequest, in QueryInput) (*mcp.CallToolResult, any, error) {
 		return call(ctx, client, in.Query, in.Variables)
 	})
 	for _, surface := range Surfaces {
@@ -88,10 +98,14 @@ func New(client *gateway.Client) (*mcp.Server, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, errs := gqlparser.LoadQuery(client.Schema, query); len(errs) > 0 {
+		doc, errs := gqlparser.LoadQuery(client.Schema, query)
+		if len(errs) > 0 {
 			return nil, fmt.Errorf("%s default query: %s", surface.Name, errs.Error())
 		}
-		mcp.AddTool(s, tool(surface.Name, surface.Description), func(ctx context.Context, _ *mcp.CallToolRequest, in ReadInput) (*mcp.CallToolResult, any, error) {
+		if _, err := readschema.Plan(client.Schema, doc, nil); err != nil {
+			return nil, fmt.Errorf("%s default contract: %w", surface.Name, err)
+		}
+		mcp.AddTool(s, tool(surface.Name, surface.Description+" Results include field_semantics and exact normalized_values; use normalized_values.amount and currency, and do not convert twice."), func(ctx context.Context, _ *mcp.CallToolRequest, in ReadInput) (*mcp.CallToolResult, any, error) {
 			query, vars, err := BuildQuery(client.Schema, surface, in)
 			if err != nil {
 				return nil, nil, err

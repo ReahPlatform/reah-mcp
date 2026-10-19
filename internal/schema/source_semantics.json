@@ -1,0 +1,72 @@
+{
+  "TreasuryPositionAccount.currentAPY": {
+    "unit": "decimal_fraction",
+    "scale": 0,
+    "normalized_unit": "utilized_apy",
+    "description": "Annualized APY realized by this position from its entry and current share prices. This is the Portfolio Utilized APY, not the vault's current product quote.",
+    "evidence_ref": "runtime:agent-compute/current_entity_read_helpers.js#treasuryPositionRowNative"
+  },
+  "TreasuryPositionAccount.currentValueInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "TreasuryPositionAccount.investedInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "TreasuryPositionAccount.unrealizedProfitInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "TreasuryPositionAccountSummary.averageAPY": {
+    "unit": "decimal_fraction",
+    "scale": 0,
+    "normalized_unit": "average_current_apy",
+    "description": "Position-weighted average of associated vault product APYs, not an average of position utilized APYs.",
+    "evidence_ref": "runtime:agent-compute/current_entity_read_helpers.js#treasurySummaryNative"
+  },
+  "TreasuryPositionAccountSummary.currentValueInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "TreasuryPositionAccountSummary.investedInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "TreasuryPositionAccountSummary.totalEarnedInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "TreasuryPositionAccountSummary.unrealizedProfitInUSD": {
+    "unit": "usd_minor_units",
+    "scale": 2,
+    "normalized_unit": "usd_dollars",
+    "description": "Backend ledger USD minor units; divide by 100 for USD dollars.",
+    "evidence_ref": "runtime:agent-compute/helper_native.js#usdCentsToDollarsExactNative"
+  },
+  "Vault.apy": {
+    "unit": "decimal_fraction",
+    "scale": 0,
+    "normalized_unit": "current_apy",
+    "description": "Current product APY quoted for the vault. Preserve the source value, including negative values; do not substitute a position's utilized APY.",
+    "evidence_ref": "runtime:agent-compute/current_entity_read_helpers.js#treasuryVaultRowNative"
+  }
+}

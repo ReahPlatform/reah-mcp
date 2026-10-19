@@ -30,8 +30,10 @@ type Client struct {
 }
 
 type Response struct {
-	Data   json.RawMessage `json:"data,omitempty"`
-	Errors json.RawMessage `json:"errors,omitempty"`
+	Data             json.RawMessage                       `json:"data,omitempty"`
+	Errors           json.RawMessage                       `json:"errors,omitempty"`
+	FieldSemantics   []readschema.SelectedField            `json:"field_semantics"`
+	NormalizedValues map[string]readschema.NormalizedValue `json:"normalized_values"`
 }
 
 func New(endpoint, token, entityID string) (*Client, error) {
@@ -163,6 +165,14 @@ func (c *Client) Query(ctx context.Context, query string, variables map[string]a
 	if err != nil {
 		return nil, err
 	}
+	doc, errs := gqlparser.LoadQuery(c.Schema, query)
+	if len(errs) > 0 {
+		return nil, errors.New("cannot interpret validated query")
+	}
+	plan, err := readschema.Plan(c.Schema, doc, variables)
+	if err != nil {
+		return nil, err
+	}
 	body, err := json.Marshal(map[string]any{"query": query, "variables": variables})
 	if err != nil {
 		return nil, errors.New("variables must be JSON values")
@@ -199,5 +209,11 @@ func (c *Client) Query(ctx context.Context, query string, variables map[string]a
 	if len(result.Data) == 0 && len(result.Errors) == 0 {
 		return nil, errors.New("GraphQL response contains neither data nor errors")
 	}
+	values, err := plan.Normalize(result.Data)
+	if err != nil {
+		return nil, err
+	}
+	result.FieldSemantics = plan.Metadata
+	result.NormalizedValues = values
 	return &result, nil
 }
