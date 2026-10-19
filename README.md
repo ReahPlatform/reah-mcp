@@ -84,9 +84,13 @@ instances. The HTTP token is not an OAuth access token.
 
 ## Hosted authorization design
 
-The proposed hosted experience is **Add Reah → sign in → choose a business →
-authorize**. It reuses Reah login and the Agent credential lifecycle, with a
-separate OAuth authorization grant and enforced read-only delegation.
+The proposed hosted experience is **Add Reah → sign in → select businesses →
+authorize**. One connection can cover multiple explicitly selected businesses,
+each with its own permission ceiling and revocation state. Hosted business tools
+take an explicit `entityId`; a planned `reah_list_entities` tool lists the
+businesses available to the connection. It reuses Reah login and the Agent
+credential lifecycle, with a separate OAuth authorization grant and enforced
+read-only delegation.
 
 The implementation plan, API contracts, data model, rollout, and acceptance
 criteria are in [Hosted OAuth design](docs/hosted-oauth-design.md).
