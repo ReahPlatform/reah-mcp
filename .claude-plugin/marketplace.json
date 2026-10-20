@@ -7,7 +7,7 @@
     {
       "name": "reah",
       "source": "./",
-      "description": "Connect your AI assistant to Reah for read-only financial queries and analysis.",
+      "description": "Read-only Reah financial tools and a browser skill for user-requested website actions.",
       "version": "0.1.0"
     }
   ]

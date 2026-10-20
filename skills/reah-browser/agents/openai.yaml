@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reah Browser"
+  short_description: "Carry out requested actions in the Reah website"
+  default_prompt: "Use $reah-browser to save an invoice draft in my signed-in Reah account."

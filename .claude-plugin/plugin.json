@@ -1,7 +1,7 @@
 {
   "name": "reah",
   "version": "0.1.0",
-  "description": "Explore and analyze your Reah financial data with read-only tools for balances, accounts, transactions, settled cashflow, cards, invoices and treasury.",
+  "description": "Analyze Reah financial data with read-only MCP tools and carry out user-requested website actions with a browser skill.",
   "author": {
     "name": "ReahPlatform"
   },
@@ -12,6 +12,7 @@
     "finance",
     "banking",
     "mcp",
-    "read-only"
+    "read-only",
+    "browser"
   ]
 }

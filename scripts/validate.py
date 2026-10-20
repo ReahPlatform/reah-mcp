@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import re
+from urllib.parse import unquote, urlsplit
 
 root = Path(__file__).resolve().parent.parent
 
@@ -26,10 +27,41 @@ market = read_json(".agents/plugins/marketplace.json")
 mirror = root / market["plugins"][0]["source"]["path"]
 for path in [".codex-plugin", ".mcp.json", "skills", "README.md"]:
     assert (mirror / path).resolve(strict=True) == (root / path).resolve(), path
+packaged_skills = {path.parent.resolve() for path in (root / "skills").glob("*/SKILL.md")}
 for path in [".codex-plugin/plugin.json", ".cursor-plugin/plugin.json"]:
     skills = read_json(path)["skills"]
+    discovered_skills = set()
     for skill in [skills] if isinstance(skills, str) else skills:
-        assert (root / skill).is_dir(), skill
+        directory = root / skill
+        assert directory.is_dir(), skill
+        if (directory / "SKILL.md").is_file():
+            discovered_skills.add(directory.resolve())
+        else:
+            discovered_skills.update(path.parent.resolve() for path in directory.glob("*/SKILL.md"))
+    assert discovered_skills == packaged_skills, f"undiscoverable or extra skills: {path}"
+
+for directory in packaged_skills:
+    documents = {path.resolve() for path in directory.rglob("*.md")}
+    links = {}
+    for document in documents:
+        links[document] = set()
+        for destination in re.findall(r"\[[^\]]+\]\(([^\s)]+)\)", document.read_text()):
+            url = urlsplit(destination)
+            if url.scheme or url.netloc or not url.path:
+                continue
+            target = (document.parent / unquote(url.path)).resolve()
+            assert target.is_relative_to(directory), f"skill link leaves package: {document}: {destination}"
+            assert target.exists(), f"missing skill reference: {document}: {destination}"
+            if target in documents:
+                links[document].add(target)
+    reachable = set()
+    pending = [directory / "SKILL.md"]
+    while pending:
+        document = pending.pop()
+        if document not in reachable:
+            reachable.add(document)
+            pending.extend(links[document] - reachable)
+    assert documents <= reachable, f"unreachable skill documents: {documents - reachable}"
 
 source = (root / "internal/server/tools.go").read_text()
 tools = set(re.findall(r'\{"(reah_[a-z_]+)",', source))
@@ -45,4 +77,4 @@ assert not (root / "internal/schema/source").exists(), "raw upstream mutation sc
 for path in root.rglob("*.json"):
     if ".git" not in path.parts:
         json.loads(path.read_text())
-print(f"Validated 4 plugin manifests, 2 marketplaces, plugin mirror and {len(tools)} skill tools.")
+print(f"Validated 4 plugin manifests, 2 marketplaces, plugin mirror, {len(packaged_skills)} skills and {len(tools)} read-only tools.")

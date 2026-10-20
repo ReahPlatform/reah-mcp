@@ -6,7 +6,8 @@ The service validates queries locally and uses the upstream identity's Reah
 permissions to access data.
 
 Includes a Go MCP server and plugin configurations for Claude Code, Codex, and
-Cursor. The API schema is pinned to the Reah revision dated October 18, 2026.
+Cursor, with skills for financial analysis and user-requested browser actions.
+The API schema is pinned to the Reah revision dated October 18, 2026.
 
 ## Run locally
 
@@ -44,10 +45,32 @@ from the configured terminal.
 ## Install the plugin
 
 This repository includes Claude Code, Codex, and Cursor / Agent Plugins manifests
-and an optional `reah-mcp` skill for financial analysis workflows. Field meanings,
-units, and normalized values are provided by the MCP server independently of the
-skill. Install the binary and configure its environment first. Installation also
-requires access to this private GitHub repository.
+and two optional skills:
+
+- `reah-mcp` guides financial analysis with the read-only MCP tools. Field
+  meanings, units, and normalized values are provided by the server independently
+  of the skill.
+- [`reah-browser`](skills/reah-browser/SKILL.md) guides user-requested actions
+  in the signed-in Reah website,
+  such as editing contacts, saving invoice drafts, or preparing a transaction
+  for user review. It requires browser tools supplied by the host; this plugin
+  does not install a browser controller. Web permissions and the user's task
+  govern browser actions; read-only MCP consent does not authorize them. Final
+  fund movement and signing are handed to the user.
+
+The browser skill loads guidance progressively: the short entry routes to the
+current task, individual guides cover the reviewed UI flow, and payment-method,
+approval, or recovery details load only when needed. Its
+[source map](skills/reah-browser/references/source-map.md) pins the reviewed
+frontend revision separately from the MCP API schema.
+
+Skills are distributed through the plugin or installed as local skill folders.
+Adding an MCP server URL alone does not install them. Browser workflows use the
+user's web session without exporting it to the MCP server. The MCP tools remain
+read-only.
+
+For MCP queries, install the binary and configure its environment first.
+Installation also requires access to this private GitHub repository.
 
 Claude Code:
 
