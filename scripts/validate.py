@@ -13,16 +13,20 @@ def read_json(path):
 
 
 manifests = ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".cursor-plugin/plugin.json"]
+version = read_json("plugin.json")["version"]
+assert re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", version), "invalid release version"
 for path in manifests:
     manifest = read_json(path)
     assert manifest["name"] == "reah", path
-    assert manifest["version"] == "0.1.0", path
+    assert manifest["version"] == version, f"plugin version mismatch: {path}"
     assert manifest["repository"] == "https://github.com/ReahPlatform/reah-mcp", path
 
 mcp = read_json(".mcp.json")
 assert mcp["mcpServers"] == read_json("mcp.json")["mcpServers"]
 assert mcp["mcpServers"]["reah"] == {"command": "reah-mcp"}
-assert read_json(".claude-plugin/marketplace.json")["plugins"][0]["source"] == "./"
+claude_marketplace = read_json(".claude-plugin/marketplace.json")["plugins"][0]
+assert claude_marketplace["source"] == "./"
+assert claude_marketplace["version"] == version, "marketplace version mismatch"
 market = read_json(".agents/plugins/marketplace.json")
 mirror = root / market["plugins"][0]["source"]["path"]
 for path in [".codex-plugin", ".mcp.json", "skills", "README.md"]:

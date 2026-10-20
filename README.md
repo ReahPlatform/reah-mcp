@@ -60,9 +60,8 @@ and two optional skills:
 
 The browser skill loads guidance progressively: the short entry routes to the
 current task, individual guides cover the reviewed UI flow, and payment-method,
-approval, or recovery details load only when needed. Its
-[source map](skills/reah-browser/references/source-map.md) pins the reviewed
-frontend revision separately from the MCP API schema.
+approval, or recovery details load only when needed. The same skill instructions
+are shared by Claude Code, Codex, and Cursor through their plugin configurations.
 
 Skills are distributed through the plugin or installed as local skill folders.
 Adding an MCP server URL alone does not install them. Browser workflows use the

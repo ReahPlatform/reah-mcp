@@ -24,6 +24,7 @@ several stages. Keep the task's business and record identity established.
 | Contact creation with an attached crypto address | Contact may exist while address attachment failed; inspect that contact's methods |
 | New invoice save or publish | Draft/ID may already exist; inspect saved fields and publication/approval separately |
 | Save and resend an invoice | Edits can be saved even when resend fails; retry only a separately authorized, demonstrably failed email action |
+| Match a transaction as paid | The match can persist before marking paid fails; inspect the link, invoice status, and any automatically requested receipt separately |
 | Approval decision | Dispatched decision may have an unknown outcome; inspect revision, decision history, and execution |
 | Bulk transfer | Check each row's request and execution state; do not resubmit successful or unknown rows |
 | Treasury withdrawal/deposit | Track all underlying approval IDs, including those not opened in the first drawer |

@@ -8,7 +8,7 @@
       "name": "reah",
       "source": "./",
       "description": "Read-only Reah financial tools and a browser skill for user-requested website actions.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }

@@ -54,5 +54,3 @@ available, explain that requirement and give the user a manual handoff.
 The guides describe reviewed Reah flows, not every possible web action. If the
 live flow differs materially or the requested workflow is not covered, inspect
 the page and establish its effects before acting. Do not invent missing behavior.
-Maintainers can consult the pinned [source map](references/source-map.md);
-agents do not need to load it during ordinary tasks.

@@ -24,8 +24,22 @@ Distinguish a queued/accepted email from confirmed delivery.
   authorize emailing a receipt or changing future invoice settings. Resolve the
   intended effects before submitting; hand off if the UI cannot express that scope.
 - For matching an existing transaction, compare the actual transaction identity,
-  amount, currency, and invoice relationship. Do not invent a payment or unlink
-  a prior match to get around a blocked action.
+  amount, currency, and invoice relationship. The matching confirmation can offer
+  `Partial Paid` and `Paid`. Choose the resolution supported by the payment
+  evidence and the user's task; do not use partial payment merely to avoid email.
+- Choosing `Paid` also starts marking the invoice fully paid and stops overdue/
+  reminder emails. It inherits the business's automatic-receipt setting, defaulting
+  to sending a receipt if that setting is unavailable. The matching confirmation
+  has no per-action receipt switch. Before confirming, establish the current
+  setting through visible UI and ensure authorization covers any receipt email.
+  If the setting cannot be established, resolve receipt authority or hand off.
+  If receipt sending is not authorized and cannot be disabled for this action,
+  hand off instead of changing the business's global setting.
+- Matching and marking paid are separate stages: matching can succeed while
+  the subsequent paid update fails. Verify the linked transaction, invoice
+  payment status, and any receipt separately before reporting completion.
+  Do not repeat matching to repair a failed paid update, invent a payment, or
+  unlink a prior match to get around a blocked action.
 - Handle signing through the user. If approval is involved, read
   [approvals](approvals.md). Verify the invoice state and receipt outcome separately.
 
