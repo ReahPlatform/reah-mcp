@@ -13,8 +13,8 @@ https://platform.stg.reah.com/mcp
 
 The Gateway runs the MCP service and executes predefined GraphQL reads through
 existing business resolvers. This repository distributes client configurations,
-installation instructions, and optional skills. No local server, Go runtime,
-Agent credential, or manually configured bearer token is required.
+installation instructions, and an optional analysis skill. No local server, Go
+runtime, Agent credential, or manually configured bearer token is required.
 
 ## Connect
 
@@ -114,17 +114,11 @@ raw GraphQL data and include exact normalized values and coverage information.
 Missing valuations are unavailable, never zero. Use normalized values without
 converting them a second time.
 
-## Optional plugin and skills
+## Optional plugin and analysis skill
 
 Adding the MCP URL connects tools; it does not install skills. This repository
-also packages two portable skills:
-
-- [`reah-mcp`](skills/reah-mcp/SKILL.md): general financial analysis guidance.
-- [`reah-browser`](skills/reah-browser/SKILL.md): progressively loaded website
-  workflows for user-requested actions. It requires browser tools supplied by
-  the host and the user's own signed-in website session. MCP consent does not
-  authorize browser writes. Financial execution and signing are handed to the
-  user before a submission can commit funds.
+also packages the portable [`reah-mcp`](skills/reah-mcp/SKILL.md) skill for
+financial analysis with read-only MCP tools.
 
 Plugin installation requires access to this GitHub repository. The plugin
 already includes the staging MCP connection; choose either plugin installation
@@ -178,7 +172,8 @@ make build
 
 Checks validate manifests, staging URLs, credential-free configuration, skill
 links, and the Codex plugin mirror. Tests exercise rejected configurations and
-archive contents. Build writes `dist/reah-0.3.0.zip` with documentation,
-manifests, and skills, resolving the Codex mirror's symlinks into portable files.
+archive contents. Build writes `dist/reah-0.3.1.zip` with documentation,
+manifests, and the analysis skill, resolving the Codex mirror's symlinks into
+portable files.
 It does not build or deploy a server. Runtime authentication, permissions, and
 financial normalization tests belong to the Gateway and Backend services.

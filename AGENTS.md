@@ -16,5 +16,4 @@
 - Keep MCP read-only. Document only tools, fields, units, and arguments verified
   against the Gateway catalog. Its live tool schemas are authoritative; do not
   introduce arbitrary GraphQL, field selections, or financial write tools here.
-- Keep analysis skills general. Put tool reference details in documentation;
-  preserve the browser skill's progressive loading and separate website session.
+- Keep the analysis skill general. Put tool reference details in documentation.

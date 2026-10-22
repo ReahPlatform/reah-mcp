@@ -7,8 +7,8 @@
     {
       "name": "reah",
       "source": "./",
-      "description": "Hosted Reah financial tools with OAuth sign-in and optional analysis and browser skills.",
-      "version": "0.3.0"
+      "description": "Hosted read-only Reah financial tools with OAuth sign-in and a financial analysis skill.",
+      "version": "0.3.1"
     }
   ]
 }

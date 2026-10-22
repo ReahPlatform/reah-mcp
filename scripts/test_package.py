@@ -29,7 +29,7 @@ class PluginTests(unittest.TestCase):
         target.write_text(json.dumps(value))
 
     def test_accepts_hosted_plugin(self):
-        self.assertEqual(validate(self.root), "0.3.0")
+        self.assertEqual(validate(self.root), "0.3.1")
 
     def test_rejects_credential_and_local_server_configuration(self):
         variants = [
@@ -50,24 +50,24 @@ class PluginTests(unittest.TestCase):
             validate(self.root)
 
     def test_rejects_missing_skill_reference(self):
-        path = self.root / "skills/reah-browser/references/cards.md"
-        path.unlink()
+        path = self.root / "skills/reah-mcp/SKILL.md"
+        path.write_text(path.read_text() + "\n[Missing](references/missing.md)\n")
         with self.assertRaisesRegex(ValueError, "missing reference"):
             validate(self.root)
 
     def test_rejects_unreachable_skill_reference(self):
-        (self.root / "skills/reah-browser/references/unlinked.md").write_text("Unlinked guidance")
+        (self.root / "skills/reah-mcp/unlinked.md").write_text("Unlinked guidance")
         with self.assertRaisesRegex(ValueError, "unreachable skill documents"):
             validate(self.root)
 
     def test_rejects_skill_link_outside_its_package(self):
-        path = self.root / "skills/reah-browser/SKILL.md"
+        path = self.root / "skills/reah-mcp/SKILL.md"
         path.write_text(path.read_text() + "\n[Outside](../../README.md)\n")
         with self.assertRaisesRegex(ValueError, "link leaves package"):
             validate(self.root)
 
-    def test_rejects_incomplete_cursor_skill_discovery(self):
-        self.rewrite_json(".cursor-plugin/plugin.json", lambda value: value.update(skills=["./skills/reah-mcp/"]))
+    def test_rejects_missing_cursor_skill_discovery(self):
+        self.rewrite_json(".cursor-plugin/plugin.json", lambda value: value.update(skills=[]))
         with self.assertRaisesRegex(ValueError, "undiscoverable skills"):
             validate(self.root)
 
@@ -93,8 +93,9 @@ class PluginTests(unittest.TestCase):
             names = archive.namelist()
             self.assertNotIn(".env", names)
             self.assertFalse(any(name.startswith("bin/") for name in names))
+            self.assertFalse(any("reah-browser" in name for name in names))
             for path in [".mcp.json", "README.md", "docs/tools.md", "examples/staging.mcp.json",
-                         ".codex-plugin/plugin.json", "skills/reah-browser/SKILL.md"]:
+                         ".codex-plugin/plugin.json", "skills/reah-mcp/SKILL.md"]:
                 self.assertEqual(archive.read(path), archive.read(f"plugins/reah/{path}"))
             extracted = self.root / "extracted"
             archive.extractall(extracted)

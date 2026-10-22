@@ -1,7 +1,7 @@
 {
   "name": "reah",
-  "version": "0.3.0",
-  "description": "Connect to Reah hosted read-only financial tools with browser sign-in, plus skills for analysis and user-requested website actions.",
+  "version": "0.3.1",
+  "description": "Connect to Reah hosted read-only financial tools with OAuth sign-in and a financial analysis skill.",
   "author": {
     "name": "ReahPlatform"
   },
@@ -12,14 +12,13 @@
     "finance",
     "banking",
     "mcp",
-    "read-only",
-    "browser"
+    "read-only"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Reah",
-    "shortDescription": "Reah financial data and browser workflows",
+    "shortDescription": "Read-only Reah financial data and analysis",
     "developerName": "ReahPlatform",
     "category": "Productivity",
     "capabilities": [

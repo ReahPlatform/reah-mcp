@@ -66,7 +66,7 @@ def validate(root=ROOT):
         require((mirror / path).resolve(strict=True) == (root / path).resolve(), f"invalid plugin mirror: {path}")
 
     skills = {path.parent.resolve() for path in (root / "skills").glob("*/SKILL.md")}
-    require({path.name for path in skills} == {"reah-mcp", "reah-browser"}, "missing or unexpected skills")
+    require({path.name for path in skills} == {"reah-mcp"}, "missing or unexpected skills")
     for path in (".codex-plugin/plugin.json", ".cursor-plugin/plugin.json"):
         entries = read_json(root, path)["skills"]
         discovered = set()
