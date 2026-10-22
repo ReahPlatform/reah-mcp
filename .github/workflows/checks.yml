@@ -7,18 +7,9 @@ jobs:
     runs-on: reah-ci-stateless
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-python@v5
         with:
-          go-version-file: go.mod
-          cache: true
-      - name: Ensure native build tools
-        run: |
-          set -euo pipefail
-          if command -v make >/dev/null 2>&1 && command -v gcc >/dev/null 2>&1; then
-            exit 0
-          fi
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential
+          python-version: '3.12'
       - run: make lint
       - run: make test
       - run: make build

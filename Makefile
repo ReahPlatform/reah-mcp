@@ -1,15 +1,11 @@
-.PHONY: lint test build schema
+.PHONY: lint test build
 
 lint:
-	@test -z "$$(gofmt -l cmd internal scripts/schema)" || (gofmt -l cmd internal scripts/schema; exit 1)
-	go vet ./...
 	python3 scripts/validate.py
+	git diff --check
 
 test:
-	go test -race -shuffle=on ./...
+	python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
 build:
-	go build -trimpath -o bin/reah-mcp ./cmd/reah-mcp
-
-schema:
-	go run ./scripts/schema
+	python3 scripts/package.py

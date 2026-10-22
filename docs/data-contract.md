@@ -1,198 +1,105 @@
-# Reah read data contract
+# Hosted financial data contract
 
-The MCP schema is a reviewed subset of Reah's read API. A field or argument is
-public only when it has an explicit contract in `internal/schema/contracts.go`.
-The generated schema contains no other upstream fields. Removing a field from
-the contract removes it from queries and `reah_describe_type`; its upstream
-existence does not make it available through MCP.
+The Gateway owns tool schemas, fixed GraphQL reads, authorization, and exact
+decimal normalization. The live tool definitions and `reah_catalog` describe the
+deployed contract. This client plugin does not create additional fields or
+perform a second normalization pass.
 
-Contracts document meaning, raw units, fixed or companion scale, currency or
-asset identity, null behavior, required companion selections, and evidence.
-Structural fields such as IDs, cursors, statuses, and record collections have
-business descriptions without pretending to carry monetary units. Introspection
-and private identity or card-secret fields are not discovery surfaces.
+## Result structure
 
-## Reading values
-
-Every business read and `reah_query` returns:
-
-- `data`: original upstream values. Money stays in its original decimal string
-  encoding; cursors, coverage, exclusion counts, and nulls remain unchanged.
-- `errors`: original GraphQL errors, when present. MCP `isError` is true for
-  partial GraphQL errors, even when some data is usable.
-- `field_semantics`: contracts for the selected fields, with exact `Type.field`
-  references and response paths. Paths use JSON Pointer syntax; `*` denotes an
-  array item. Aliases change paths, not the underlying field's meaning.
-- `normalized_values`: exact conversions keyed by JSON Pointer into `data`.
-  Use `amount`, `currency` and `unit`. `raw` preserves the original numeric
-  string, while `source_scale` records the source conversion exponent. Do not
-  scale `amount` a second time. APYs also include a ready-to-display `percent`.
-- `read_coverage`: acquisition status for source-bounded collections and
-  aggregates, keyed by JSON Pointer. `source_limit` records the upstream cap;
-  `returned_items` is present only when an actual list can be counted. This is
-  separate from amount availability and external ingestion coverage.
-
-For example, a balance response with raw `data.entity.totalBalance.usdAmount`
-equal to `"10000"` includes this normalized entry:
+Business reads return the same JSON object in MCP `structuredContent` and the
+JSON text content block:
 
 ```json
 {
-  "/entity/totalBalance/usdAmount": {
-    "raw": "10000",
-    "amount": "100",
-    "unit": "usd_dollars",
-    "currency": "USD",
-    "source_scale": 2,
-    "status": "available"
+  "status_code": 200,
+  "graphql": {
+    "data": {
+      "entity": {
+        "totalBalance": {"usdAmount": "12345.67", "priceVersion": "example"}
+      }
+    }
+  },
+  "normalized_values": {
+    "/graphql/data/entity/totalBalance/usdAmount": {
+      "amount": "123.4567",
+      "currency": "USD"
+    }
+  },
+  "normalization_unavailable": {},
+  "field_semantics": {
+    "Balance.usdAmount": "USD cents including fractional cents; divide by 100 exactly. Valuation, not spendable cash."
+  },
+  "read_coverage": {
+    "note": "Follow every available cursor. Preserve raw GraphQL coverage, valuation status and exclusions. Source errors and nulls are unavailable, never zero."
   }
 }
 ```
 
-`amount` is canonical decimal text, not locale formatting. Display USD `"100"`
-as `$100.00` if desired; do not divide it by 100 again. Fractional cents, large
-integers, tiny asset amounts and negative values retain exact precision. No
-floating-point arithmetic or rounding participates in conversion.
+The example shows selected fields. Raw data, errors, and extensions remain under
+`graphql`. Normalization maps use JSON Pointer paths into that object, starting
+with `/graphql/data/`. `field_semantics` is a map of financial contract notes,
+not a complete GraphQL schema. Read the live catalog for fixed output fields.
+Money entries contain decimal-string `amount` and `currency`; they do not include
+`source_scale`. Native asset entries instead carry `amount`,
+`unit: "major_asset_units"`, and a note to use the raw companion asset identity.
+APY entries carry `percent` and `unit: "percent"`.
+
+`reah_list_entities` returns `{"entities":[{"id":"...","name":"..."}]}`;
+`reah_catalog` returns `tools`, `field_semantics`, and `instructions`. These two
+discovery results do not use the financial envelope above. Failed calls may
+instead return an `error` object with MCP `isError: true`.
 
 ## Financial units
 
-| Field | Raw contract | Normalized contract |
+| Raw field | Meaning and conversion | Interpretation |
 | --- | --- | --- |
-| `Balance.usdAmount` | USD cents, possibly fractional | USD dollars; divide raw value by 100 |
-| `Balance.nativeAmount` | Major asset units | Same numeric amount with aggregation asset identity; no second decimal shift |
-| Treasury position / summary `*InUSD` fields exposed by MCP | USD cents, possibly fractional | USD dollars |
-| `TreasuryPositionAccount.currentValueInAssets` | Major underlying asset units | Same amount, identified by `vault.underlyingInstrument.asset.symbol` |
-| `Card.limitAmountMinor` | Integer USD cents over `limitFrequency` | USD dollars; not available balance |
-| `SettledMovement.signedAmountSmallest` | Signed integer instrument units | Divide by `10^instrumentDecimals`, retaining `assetSymbol` and instrument identity |
-| `SettledMovementMoney.amountMinor` | Integer minor units in `currency` | Divide by `10^scale` |
-| `InvoiceAmountSummary.amountDue` | Major units of `currency` | Same amount; not proof of receipt |
-| `InvoiceAmountSummary.amountDueUsd` | Frozen publish-time USD dollars | Same dollar amount; never divide by 100 |
-| APY fields | Decimal fractions, e.g. `0.05` | `amount: "0.05"`, `percent: "5"`; never multiply `percent` again |
+| `Balance.usdAmount` | USD cents, including fractional cents; divide by 100 exactly | Valuation, not spendable cash |
+| Treasury position and summary `*InUSD` fields | USD cents; divide by 100 exactly | Bounded position population; do not add overlapping positions and summaries |
+| `Balance.nativeAmount` | Already major asset units | Use the companion asset or instrument; no further decimal scaling |
+| `TreasuryPositionAccount.currentValueInAssets` | Already major underlying asset units | Identify the asset through the vault's underlying instrument |
+| `InvoiceAmountSummary.amountDue` | Already major units of companion `currency` | Outstanding obligation, not proof of cash receipt |
+| `InvoiceAmountSummary.amountDueUsd` | Already USD dollars | Empty legacy values and null are unavailable, never zero |
+| `Card.limitAmountMinor` | Integer USD cents; divide by 100 | A spending limit over `limitFrequency`, not an account balance |
+| `SettledMovement.signedAmountSmallest` | Signed integer divided by `10^instrumentDecimals`, in `assetSymbol` | A settled posting is not automatically external cashflow |
+| `SettledMovementMoney.amountMinor` | Integer divided by `10^scale`, in companion `currency` | Preserve valuation availability and status |
+| `Vault.apy` | Product APY as a decimal fraction; multiply by 100 for percent | Current product yield, not realized position performance |
+| `TreasuryPositionAccountSummary.averageAPY` | Weighted product APY as a decimal fraction; multiply by 100 for percent | Applies to the bounded summary |
 
-`Vault.apy` is current product APY. `TreasuryPositionAccountSummary.averageAPY`
-is a position-weighted average of product APYs over the bounded upstream subset,
-not realized position performance. Negative product rates remain negative.
+Use `normalized_values` for calculations and display without applying these
+conversions again. For example, raw `"0.05"` APY becomes
+`{"percent":"5","unit":"percent"}`. Preserve decimal precision with decimal
+arithmetic and retain signs; do not introduce binary floating-point rounding.
+Never sum different native assets or currencies as if they shared a unit.
 
-Currency and scale companions are mandatory in custom selections; the server
-verifies the actual returned values too.
-For native balances, select aggregation `__typename`, Asset `symbol`, and
-Instrument `asset { symbol }`. For Treasury asset amounts, select the vault's
-underlying asset symbol. Aliased and fragmented companions work normally.
+Card activity amounts and position `currentAPY` are absent from the fixed
+selections because their semantics cannot be established reliably. Masked card
+limits and card activity metadata remain available. Do not infer spending totals
+from activity metadata or treat missing fields as zero.
 
-## Fields intentionally omitted
+## Missing values and errors
 
-`CardTransaction.amountMinor` is absent from the public SDL, discovery, and
-default selections. The current producer mixes USD card spending and USDC
-deposit/withdrawal amounts from different metadata paths without an explicit
-scale. A currency label or the Web's formatting helper does not establish the
-scale of every record. Card activity metadata, including currency labels and
-pagination, remains available; it does not support monetary spending totals.
+A null or empty source value has no normalized value. Its path appears in
+`normalization_unavailable` with a reason. Missing settled-movement USD valuation
+is also recorded as unavailable. Invalid financial decimals, missing required
+normalization companions, GraphQL errors, missing data, or unsuccessful execution
+status mark the MCP result `isError: true`; interpretable partial data may remain.
+Never report such a result as an unqualified successful total.
 
-`TreasuryPositionAccount.currentAPY` is also absent. The Ledger calculates XIRR
-from settled investor cashflows and a terminal marked position value, then applies
-a net yield multiplier. It returns zero for missing inputs, unsolved XIRR, and
-nonpositive returns. An individual zero therefore cannot distinguish actual zero
-yield, missing data, and a negative return. The MCP does not publish that ambiguous
-value as an available financial measure. Current vault product APY remains exposed.
+## Pagination and coverage
 
-These fields are removed at schema generation, rather than rejected only after
-the upstream request or hidden only by the optional skill.
+| Source | Coverage rule |
+| --- | --- |
+| Cursor-based tools | Follow every available cursor with unchanged filters; retain raw coverage, watermarks, and exclusions |
+| Wallets | At most 100; no continuation; completeness is `not_proven` |
+| Treasury | Latest at most 200 matching positions, ordered by creation time and ID descending; positions and summary have no continuation and completeness is `not_proven` |
+| Assets | Full entity catalog; no `first`, `after`, or synthetic cursor |
+| Tasks | Pending tasks assigned to the user; no continuation or complete-history guarantee |
+| Search | Bounded discovery matches; not a complete financial population |
+| Settled movements | Preserve ingestion coverage, data timestamp, watermarks, valuation status, selection flags, and exclusion counts even after all pages are read |
 
-## Collection coverage
-
-`Entity.treausryPositionAccounts` returns at most the latest 200 matching
-positions, ordered by `created_at DESC, id DESC`. The upstream selection requires
-a Treasury account and a nondeleted vault. There is no continuation. Its field
-contract publishes `source_limit: 200`, and each read includes coverage such as:
-
-```json
-{
-  "/entity/treausryPositionAccounts": {
-    "status": "not_proven",
-    "source_limit": 200,
-    "returned_items": 200,
-    "reason": "The source limit was reached; older matching positions may be omitted and no continuation is available."
-  }
-}
-```
-
-A successful non-null list with fewer than 200 non-null items has `complete`
-coverage for that matching upstream collection only. A full batch, null item,
-or partial GraphQL error prevents a completeness claim. A null bounded source
-has `unavailable` status. Aliases and fragments preserve these rules and use the
-actual response paths.
-
-`Entity.treausryPositionAccountSummary` aggregates the same bounded selection.
-Its contributing count is unavailable, so a non-null summary always reports
-`not_proven`, without an invented `returned_items`. Its dollar values and weighted
-product APY are not guaranteed full-portfolio totals, even when the read succeeds.
-Removing this limit requires upstream continuation or complete aggregation;
-the MCP does not invent pagination parameters.
-
-`Entity.assets` returns the complete entity asset catalog. The Gateway ignores
-upstream `first`/`after` and always returns a null cursor, so those parameters and
-`AssetConnection.cursor` are absent from this MCP. Requesting them fails local
-schema validation; business tools do not inject a default page size for assets.
-
-## Missing data and reporting scope
-
-A null amount stays null. A null settled valuation object does not create a
-zero-valued normalized entry. A legacy empty `amountDueUsd` yields a normalized
-entry with `status: "unavailable"` and no `amount`; that legacy behavior is an
-explicit source contract. Missing coverage, valuations or pages cannot be
-silently replaced with zeros.
-
-Raw amount conversion does not establish spendability, eliminate spam balances,
-classify a movement as external cashflow, or make an incomplete page complete.
-Do not add overlapping entity, wallet, instrument and Treasury totals. Ordinary
-transactions and search matches are not a settled cashflow population. Preserve
-settlement windows, timezones, coverage, exclusions and valuation status.
-
-If the upstream service returns an unselected field,
-invalid numeric encoding, invalid enum value, or missing unit dependency for a
-non-null amount, the tool fails and does not publish that response's data.
-These checks detect producer drift; they do not expand the public schema.
-
-## Evidence and maintenance
-
-The pinned [Agent revision](https://github.com/ReahPlatform/reah-agent/commit/474fda4a771289782c5f9e793a4f0c33e7076f79)
-and source hashes are recorded in `docs/upstream.json`. Generation verifies
-both the schema and semantic-registry hashes, then copies only public unit
-contracts into `internal/schema/source_semantics.json`. It never imports the
-full capability registry or admits new fields automatically.
-
-The unit review also follows the producer and its UI consumer:
-
-- [Ledger balance conversion](https://github.com/ReahPlatform/reah-ledger/blob/f4fa1d1d73502ed4fc4e5923f297dfb727d06663/internal/convert/balances.go):
-  `BalanceToProto` scales native amounts into major asset units and passes USD
-  cents through unchanged.
-- [Ledger Treasury production](https://github.com/ReahPlatform/reah-ledger/blob/f4fa1d1d73502ed4fc4e5923f297dfb727d06663/internal/svc/treasury_apis.go):
-  `toProtoTreasuryPosition` multiplies USD valuations by 100; asset amounts are
-  major units.
-- [Web Treasury mapping](https://github.com/ReahPlatform/reah-web/blob/a06d0d5741f1abb2f6a6ca6bb58a070ce02ac7ca/apps/dashboard/src/features/treasury/logical-vaults.ts):
-  USD values divide by 100, while fractional APYs multiply by 100 for display.
-- [Web card mapping](https://github.com/ReahPlatform/reah-web/blob/a06d0d5741f1abb2f6a6ca6bb58a070ce02ac7ca/apps/dashboard/src/pages/cards/utils/card-maps.ts):
-  masked-card spending limits divide by 100 for display; this does not establish
-  the units of every card transaction category.
-- [Ledger card activity production](https://github.com/ReahPlatform/reah-ledger/blob/c62e0e1124bdef649a3a4b28bbeba082c27bf93c/internal/svc/card_spending_apis.go#L847):
-  `cardTimelineDisplayFields` mixes USD spending metadata and USDC funding
-  amounts from `from_to`; the ambiguous transaction amount is not exposed.
-- [Ledger position APY calculation](https://github.com/ReahPlatform/reah-ledger/blob/c62e0e1124bdef649a3a4b28bbeba082c27bf93c/internal/svc/treasury_apis.go#L1705):
-  cashflow XIRR has zero fallbacks and nonpositive-result clamping; the position
-  rate is not exposed as an available financial measure.
-- [Gateway Treasury list limit](https://github.com/ReahPlatform/reah-graphql-gateway/blob/9b2e65e0d4a6c92d99e02965b322dcd9bf279d94/internal/graph/resolver/entity_treasury_helpers.go#L16)
-  and [bounded summary](https://github.com/ReahPlatform/reah-graphql-gateway/blob/9b2e65e0d4a6c92d99e02965b322dcd9bf279d94/internal/graph/resolver/entity.resolvers.go#L1042):
-  each uses one `PageSize: 200` request without continuation. The
-  [Ledger query](https://github.com/ReahPlatform/reah-ledger/blob/c62e0e1124bdef649a3a4b28bbeba082c27bf93c/internal/repos/treasury_position_accounts/query.sql#L132)
-  orders by creation time and ID descending and applies the limit.
-- [Gateway asset resolver](https://github.com/ReahPlatform/reah-graphql-gateway/blob/9b2e65e0d4a6c92d99e02965b322dcd9bf279d94/internal/graph/resolver/entity.resolvers.go#L698):
-  returns the full entity asset list and ignores pagination arguments.
-- [Ledger settled valuation](https://github.com/ReahPlatform/reah-ledger/blob/f4fa1d1d73502ed4fc4e5923f297dfb727d06663/internal/settledmovement/projection.go):
-  `Value` produces explicit-scale USD money from fiat or historical prices.
-- [Pinned invoice schema](https://github.com/ReahPlatform/reah-agent/blob/474fda4a771289782c5f9e793a4f0c33e7076f79/internal/tools/sandbox/testdata/graphql_schema/invoicing.graphql):
-  invoice summaries use major currency units and publish-time frozen USD values.
-
-To add a field, verify its meaning and units, add its explicit contract and
-companion requirements, regenerate the public schema, and add source-based
-fixtures. Run `make lint`, `make test`, and `make build`. Tests cover all default
-business selections, exact conversions, aliases/fragments, nulls, producer drift,
-and the absence of unreviewed fields from both schema and discovery.
+A successful response and an exhausted cursor do not prove that all upstream
+records have been ingested. State material gaps, source limits, and filters in
+analysis. Ordinary transaction lifecycle records and approval completion do not
+substitute for settled movements. Existing statement export metadata does not
+grant file access or permission to generate a statement.

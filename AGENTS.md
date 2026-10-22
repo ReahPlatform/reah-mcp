@@ -8,9 +8,13 @@
   unless the user explicitly requests publication.
 - Run `make lint`, `make test`, and `make build` before opening or updating a pull
   request.
-- Keep MCP read-only. Enforce entity scope and the closed schema before sending
-  upstream requests; never add identity, signing, or financial write operations.
-- Expose only fields and arguments admitted by `internal/schema/contracts.go`.
-  Verify financial units against producer and consumer code, record evidence,
-  and test exact conversions. Unreviewed fields must be absent from the public
-  schema and discovery; runtime rejection alone is insufficient.
+- This repository distributes hosted MCP connection settings and portable skills.
+  The Gateway owns OAuth, entity authorization, predefined GraphQL execution,
+  tool schemas, and financial normalization. Do not add a second local server.
+- Default plugin connections to staging until production is explicitly approved.
+  Never package credentials, bearer headers, fixed entity IDs, or login sessions.
+- Keep MCP read-only. Document only tools, fields, units, and arguments verified
+  against the Gateway catalog. Its live tool schemas are authoritative; do not
+  introduce arbitrary GraphQL, field selections, or financial write tools here.
+- Keep analysis skills general. Put tool reference details in documentation;
+  preserve the browser skill's progressive loading and separate website session.

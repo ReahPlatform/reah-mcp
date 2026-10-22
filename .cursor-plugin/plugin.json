@@ -1,7 +1,7 @@
 {
   "name": "reah",
-  "version": "0.2.0",
-  "description": "Analyze Reah financial data with read-only MCP tools and carry out user-requested website actions with a browser skill.",
+  "version": "0.3.0",
+  "description": "Connect to Reah hosted read-only financial tools with browser sign-in, plus skills for analysis and user-requested website actions.",
   "author": {
     "name": "ReahPlatform"
   },

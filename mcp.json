@@ -2,7 +2,8 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
     "reah": {
-      "command": "reah-mcp"
+      "type": "http",
+      "url": "https://platform.stg.reah.com/mcp"
     }
   }
 }
