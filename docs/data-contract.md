@@ -16,7 +16,7 @@ JSON text content block:
   "graphql": {
     "data": {
       "entity": {
-        "totalBalance": {"usdAmount": "12345.67", "priceVersion": "example"}
+        "totalBalance": {"usdAmount": "12345.67", "priceVersion": "2026-10-26T09:00:00.146Z"}
       }
     }
   },
@@ -76,6 +76,10 @@ Card activity amounts and position `currentAPY` are absent from the fixed
 selections because their semantics cannot be established reliably. Masked card
 limits and card activity metadata remain available. Do not infer spending totals
 from activity metadata or treat missing fields as zero.
+
+`Balance.priceVersion` is a nullable UTC timestamp identifying the valuation
+price version. Gateway converts Ledger's Unix milliseconds to this timestamp.
+It is not the balance update time or proof that all source data is current.
 
 ## Missing values and errors
 
