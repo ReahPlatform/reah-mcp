@@ -94,9 +94,8 @@ Never report such a result as an unqualified successful total.
 | Wallets | At most 100; no continuation; completeness is `not_proven` |
 | Treasury | Latest at most 200 matching positions, ordered by creation time and ID descending; positions and summary have no continuation and completeness is `not_proven` |
 | Assets | Full entity catalog; no `first`, `after`, or synthetic cursor |
-| Tasks | Pending tasks assigned to the user; no continuation or complete-history guarantee |
 | Search | Bounded discovery matches; not a complete financial population |
-| Settled movements | Preserve ingestion coverage, data timestamp, watermarks, valuation status, selection flags, and exclusion counts even after all pages are read |
+| Settled movements | Records posted in Reah within the requested time range. Preserve coverage flags, data timestamp, watermarks, valuation status, selection flags, and exclusion counts even after all pages are read |
 
 A successful response and an exhausted cursor do not prove that all upstream
 records have been ingested. State material gaps, source limits, and filters in

@@ -101,7 +101,7 @@ across authorized businesses, the assistant makes separate calls for each.
 
 ## Tools and financial values
 
-The hosted service provides **21 tools: 19 business reads and 2 discovery tools**.
+The hosted service provides **20 tools: 18 business reads and 2 discovery tools**.
 See the [tool reference](docs/tools.md) for names, parameters, and pagination, and
 the [data contract](docs/data-contract.md) for units, normalized results, and
 coverage limits. The connected server's tool schemas and `reah_catalog` are the
@@ -154,7 +154,7 @@ and its source remain available in Git history.
 
 The hosted API requires `entityId` and uses flat typed arguments. It replaces
 `reah_list_statements` with `reah_list_statement_exports`, adds separate card,
-invoice, task, and entity discovery tools, and removes `reah_query` and
+invoice and entity discovery tools, and removes `reah_query` and
 `reah_describe_type`. The former `arguments` and `fields` wrappers are not valid.
 Results now retain raw data under `graphql`; normalization paths start with
 `/graphql/data/`. Update saved prompts or integrations that relied on the old
