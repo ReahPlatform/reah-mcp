@@ -98,7 +98,7 @@ def validate(root=ROOT):
     require({"reah_catalog", "reah_list_entities"} <= set(tools), "missing discovery tools")
     require(not {"reah_query", "reah_describe_type", "reah_list_statements", "reah_list_statement_exports", "reah_list_tasks"} & set(tools), "legacy tool in reference")
     for path in root.rglob("*.json"):
-        if ".git" not in path.parts and "dist" not in path.parts:
+        if not {".git", "dist", "node_modules", ".build"} & set(path.parts):
             json.loads(path.read_text())
     return version
 

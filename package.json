@@ -1,0 +1,41 @@
+{
+  "name": "@reahplatform/mcp",
+  "version": "0.1.0",
+  "description": "Local Reah MCP client with browser OAuth and secure device credentials.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ReahPlatform/reah-mcp.git"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "bin": {
+    "reah-mcp": "dist/client/cli.js"
+  },
+  "files": [
+    "dist/client",
+    "docs",
+    "examples",
+    "skills",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.test.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test .build/test/*.test.js",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@napi-rs/keyring": "2.1.2",
+    "open": "11.0.4",
+    "proper-lockfile": "4.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "@types/proper-lockfile": "4.1.4",
+    "typescript": "5.9.3"
+  }
+}

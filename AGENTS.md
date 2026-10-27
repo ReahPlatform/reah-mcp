@@ -8,9 +8,14 @@
   unless the user explicitly requests publication.
 - Run `make lint`, `make test`, and `make build` before opening or updating a pull
   request.
-- This repository distributes hosted MCP connection settings and portable skills.
+- This repository distributes hosted MCP connection settings, portable skills,
+  and an optional TypeScript stdio client.
   The Gateway owns OAuth, entity authorization, predefined GraphQL execution,
-  tool schemas, and financial normalization. Do not add a second local server.
+  tool schemas, and financial normalization. The local client proxies the reviewed
+  read-only catalog without duplicating GraphQL or financial normalization.
+- Store local OAuth credentials and device keys in the OS credential store only.
+  Never expose an arbitrary signing tool or enroll keys through Web session APIs.
+  Device keys are not authorized for mutations until explicit server support exists.
 - Default plugin connections to staging until production is explicitly approved.
   Never package credentials, bearer headers, fixed entity IDs, or login sessions.
 - Keep MCP read-only. Document only tools, fields, units, and arguments verified
