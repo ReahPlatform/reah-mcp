@@ -152,10 +152,8 @@ updated plugin. Remove its environment settings and any manually configured
 Authorization header; OAuth now manages the connection. The legacy local server
 and its source remain available in Git history.
 
-The hosted API requires `entityId` and uses flat typed arguments. It replaces
-`reah_list_statements` with `reah_list_statement_exports`, adds separate card,
-invoice and entity discovery tools, and removes `reah_query` and
-`reah_describe_type`. The former `arguments` and `fields` wrappers are not valid.
+The hosted API requires `entityId` and uses flat typed arguments. It includes separate card, invoice, transaction-detail and entity discovery
+tools. Statement exports, `reah_query` and `reah_describe_type` are not exposed. The former `arguments` and `fields` wrappers are not valid.
 Results now retain raw data under `graphql`; normalization paths start with
 `/graphql/data/`. Update saved prompts or integrations that relied on the old
 format using the [current contract](docs/data-contract.md).

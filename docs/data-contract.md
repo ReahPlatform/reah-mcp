@@ -104,5 +104,28 @@ Never report such a result as an unqualified successful total.
 A successful response and an exhausted cursor do not prove that all upstream
 records have been ingested. State material gaps, source limits, and filters in
 analysis. Ordinary transaction lifecycle records and approval completion do not
-substitute for settled movements. Existing statement export metadata does not
-grant file access or permission to generate a statement.
+substitute for settled movements. Statement exports and files are not exposed
+through MCP.
+
+## Contact and transaction associations
+
+`reah_list_contacts` returns current saved chain addresses with address IDs,
+labels and network IDs/names. The transaction list and `reah_get_transaction`
+select `fromTo.from/to` party type, address(es), instrument ID/network and a
+nullable `contact { id name type }` using the same resolver as Reah Web.
+Blockchain matches require the selected entity, instrument network and address;
+an address alone is not enough. Bank matches use saved account details inside
+the resolver without returning banking account numbers.
+
+Contact names and labels are user-maintained. They are not verified recipient
+identity or evidence of ownership at the transaction date. For grouped address
+parties, the resolver returns the first matching contact, not one association
+per address; do not attribute all addresses or the whole amount to it. Null
+means no match could be resolved, including missing network/party information.
+Resolver failures remain GraphQL errors. Bounded name/address search does not
+replace the association or prove its absence.
+
+Use `SettledMovement.transactionId` (not `movementId` or `humanId`) to call
+`reah_get_transaction` with the same entity. The existing transaction ownership
+check still applies. Keep settled movements as the monetary source; these
+party selections intentionally contain no ambiguous amount fields.

@@ -13,9 +13,10 @@ Arguments are flat JSON objects with no extra keys, `fields`, or GraphQL text.
 | `reah_list_balances` | Instrument balances | `first`, `after` |
 | `reah_list_wallets` | Wallet roster and valuations; capped at 100 without continuation | None |
 | `reah_list_banking_accounts` | Bank account roster and valuations; no account numbers or credentials | None |
-| `reah_list_transactions` | Transaction lifecycle metadata, not a cashflow ledger | `first`, `after` |
+| `reah_get_transaction` | One business-owned transaction with sender/recipient parties and current saved-contact matches | Required `transactionId` |
+| `reah_list_transactions` | Transaction lifecycle, sender/recipient addresses, networks, and current saved-contact matches; not a cashflow ledger | `first`, `after` |
 | `reah_list_settled_movements` | Settled movements recorded in Reah, valuations, exclusions, and coverage flags | Required `settledFrom`, `settledTo`; optional `first`, `after`, `includeTreasury`, `includeSpam`, `excludeInternalActivity`, `excludeSmallBalances`, `transactionIds` |
-| `reah_list_contacts` | Contact IDs, names, and types | `first`, `after` |
+| `reah_list_contacts` | Contact IDs, names, types, and saved blockchain addresses with networks and labels | `first`, `after` |
 | `reah_list_invoices` | Invoice metadata and amounts | `first`, `after` |
 | `reah_get_invoice` | One invoice owned by the selected business | Required `invoiceId` |
 | `reah_list_approvals` | Approval lifecycle summaries; no decisions or execution | `first`, `after` |
@@ -23,7 +24,6 @@ Arguments are flat JSON objects with no extra keys, `fields`, or GraphQL text.
 | `reah_list_card_accounts` | Card account roster and valuations | None; use `reah_list_cards` for cards |
 | `reah_list_card_transactions` | Card activity metadata; monetary amounts are excluded | `first`, `after` |
 | `reah_list_treasury_positions` | Latest at most 200 positions and their bounded summary; no continuation | None |
-| `reah_list_statement_exports` | Existing export job metadata; no creation, download URL, or file access | `first`, `after` |
 | `reah_list_members` | Member IDs, names, emails, and joining dates | `first`, `after` |
 | `reah_list_assets` | Full asset catalog; instrument decimals take precedence over asset defaults | None; no pagination |
 | `reah_search` | Bounded matches across permitted accounts, transactions, approvals, and contacts | Required search-text `query`; optional `limit` |
@@ -69,3 +69,21 @@ These are tool argument objects, not direct REST request bodies. The MCP client
 handles the protocol envelope and OAuth. Use the [data contract](data-contract.md)
 when interpreting the result. Exhausting pages does not establish ingestion
 completeness; preserve source coverage and exclusions.
+
+To inspect a settled movement's sender or recipient, use its `transactionId`:
+
+```json
+{"entityId":"ID_FROM_ENTITY_LIST","transactionId":"TRANSACTION_ID_FROM_MOVEMENT"}
+```
+
+Pass this to `reah_get_transaction`. It returns `fromTo.from` and `fromTo.to`
+parties, including addresses, instrument/network IDs and a nullable `contact`
+with ID, name and type. `reah_list_contacts` also returns `chainAddresses`
+(address, label and network) for direct comparison. These are current saved
+address-book matches, not verified historical ownership. Grouped address parties
+return the first matching contact only; do not attribute the whole group to it.
+A null contact or an empty search result does not establish that no contact
+exists. Use settled movements, not party metadata, for monetary totals.
+
+Statement export tools are not exposed. Existing Web statement features are
+separate from this MCP catalog.

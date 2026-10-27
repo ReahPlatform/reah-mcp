@@ -96,7 +96,7 @@ def validate(root=ROOT):
     tools = re.findall(r"^\| `(reah_[a-z_]+)` \|", (root / "docs/tools.md").read_text(), re.MULTILINE)
     require(len(tools) == len(set(tools)) == 20, "tool reference must contain 20 unique tools")
     require({"reah_catalog", "reah_list_entities"} <= set(tools), "missing discovery tools")
-    require(not {"reah_query", "reah_describe_type", "reah_list_statements", "reah_list_tasks"} & set(tools), "legacy tool in reference")
+    require(not {"reah_query", "reah_describe_type", "reah_list_statements", "reah_list_statement_exports", "reah_list_tasks"} & set(tools), "legacy tool in reference")
     for path in root.rglob("*.json"):
         if ".git" not in path.parts and "dist" not in path.parts:
             json.loads(path.read_text())
