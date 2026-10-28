@@ -14,14 +14,14 @@ async function main() {
     console.log(`Usage: reah-mcp [serve|login|enroll-key|logout|status] [--server HTTPS_URL] [--profile NAME]
 
 login    Open Reah browser consent and store credentials in the OS credential store.
-serve    Serve reviewed read-only tools over MCP stdio (default). Run login first.
+serve    Serve reviewed tools over MCP stdio (default). Transfer tools require a registered local credential.
 enroll-key Retry possession proof for the current bound connection.
 status   Show local credential and preparation status.
-login --enroll-key  Opt into key binding and possession proof (requires server support).
+login --enroll-key  Bind a local key and open browser credential registration (requires server support).
 logout   Revoke this connection and remove local credentials and the device key.
 
 Default server: https://platform.stg.reah.com/mcp
-Device signing keys are not enrolled for financial operations in this release.`);
+Financial tools require server enablement and explicit browser credential registration.`);
     return;
   }
   if (positionals.length > 1 || !['serve', 'login', 'enroll-key', 'logout', 'status'].includes(positionals[0] ?? 'serve')) {
@@ -38,7 +38,7 @@ Device signing keys are not enrolled for financial operations in this release.`)
       process.stderr.write('Reah connected. Local tools use your newly authorized connection.\n');
       break;
     }
-    case 'enroll-key': await oauth.enrollKey(); process.stderr.write('Key possession confirmed; Turnkey registration is still pending. No signing authority is enabled.\n'); break;
+    case 'enroll-key': await oauth.enrollKey(); process.stderr.write('Key possession confirmed; Turnkey registration is still pending. Finish browser registration in Reah to enable the authorized transfer tools.\n'); break;
     case 'logout': await oauth.logout(); process.stderr.write('Reah connection revoked; local credentials removed.\n'); break;
     case 'status': console.log(JSON.stringify(await oauth.status(), null, 2)); break;
     default: {

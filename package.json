@@ -28,6 +28,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "2.2.3",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@napi-rs/keyring": "2.1.2",
     "open": "11.0.4",

@@ -10,8 +10,17 @@ type Document = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
 
 export class ReahOAuth {
+  private registrationURI: string | undefined;
   constructor(readonly config: Config, private readonly store: Store,
     private readonly fetch: Fetch = globalThis.fetch) {}
+
+  async signingKey() {
+    const session = await this.store.exclusive(() => this.store.read());
+    if (!session?.tokens || !session.credentialEnrollmentRequested || !session.enrollment || session.enrollment.state !== 'awaiting_provider') {
+      throw new LocalError('Log in with --enroll-key and finish credential registration in Reah before using transfer tools.');
+    }
+    return session.deviceKey;
+  }
 
   private async request(path: string, body?: URLSearchParams | Document, accessToken?: string): Promise<Document> {
     try {
@@ -60,6 +69,13 @@ export class ReahOAuth {
     }
     if (enrollKey && metadata.reah_credential_enrollment_supported !== true) {
       throw new LocalError('This Reah server does not support credential preparation. Use ordinary login for read-only access.');
+    }
+    if (enrollKey && metadata.reah_credential_registration_uri !== undefined) {
+      const registration = new URL(String(metadata.reah_credential_registration_uri));
+      if (registration.protocol !== 'https:' || registration.username || registration.password || registration.search || registration.hash || registration.pathname !== '/mcp/credentials') {
+        throw new LocalError('Reah returned an invalid credential registration page.');
+      }
+      this.registrationURI = registration.href;
     }
     for (const [field, name] of Object.entries({ authorization_endpoint: 'authorize', token_endpoint: 'token',
       revocation_endpoint: 'revoke', registration_endpoint: 'register' })) {
@@ -117,7 +133,15 @@ export class ReahOAuth {
           await this.store.write(authenticated);
           callback.finish(true);
         } catch (error) { callback.finish(false); throw error; }
-        if (enrollKey) await this.prepareKey(authenticated);
+        if (enrollKey) {
+          await this.prepareKey(authenticated);
+          const ready = await this.store.read();
+          if (this.registrationURI && ready?.enrollment) {
+            const registration = new URL(this.registrationURI);
+            registration.searchParams.set('connectionId', ready.enrollment.connectionId);
+            await openBrowser(registration.href);
+          }
+        }
       } finally { listener.close(); }
     });
   }

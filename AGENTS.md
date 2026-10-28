@@ -12,13 +12,13 @@
   and an optional TypeScript stdio client.
   The Gateway owns OAuth, entity authorization, predefined GraphQL execution,
   tool schemas, and financial normalization. The local client proxies the reviewed
-  read-only catalog without duplicating GraphQL or financial normalization.
+  read catalog and the two reviewed signed operations without duplicating GraphQL or financial normalization.
 - Store local OAuth credentials and device keys in the OS credential store only.
   Never expose an arbitrary signing tool or enroll keys through Web session APIs.
-  Device keys are not authorized for mutations until explicit server support exists.
+  Device keys authorize transfers only after explicit owner-confirmed browser registration and live server validation.
 - Default plugin connections to staging until production is explicitly approved.
   Never package credentials, bearer headers, fixed entity IDs, or login sessions.
-- Keep MCP read-only. Document only tools, fields, units, and arguments verified
+- Keep the hosted plugin read-only. Document only tools, fields, units, and arguments verified
   against the Gateway catalog. Its live tool schemas are authoritative; do not
-  introduce arbitrary GraphQL, field selections, or financial write tools here.
+  introduce arbitrary GraphQL, field selections, or generic signing. Signed financial writes are limited to reah_transfer and reah_execution. The unsigned reah_estimate_transfer preparation tool may initialize an empty Gas Station through the existing Web resolver; it must not be advertised as read-only.
 - Keep the analysis skill general. Put tool reference details in documentation.
