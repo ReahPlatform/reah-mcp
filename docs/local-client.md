@@ -176,8 +176,9 @@ hosted plugin must not be changed to an unpublished local executable.
 ### Choosing a transfer source
 
 After credential registration, use `reah_list_entities` and `reah_list_wallets`
-to select the business and wallet, then `reah_transfer_sources` for that wallet.
-The helper returns exact source IDs, address, asset identifier and decimals; do
+to select the business, wallet, blockchain account and instrument account.
+The wallet read returns exact IDs, addresses, network metadata and decimals;
+`normalized_values` at each instrument path supplies its reviewed `caip19`. Do
 not guess internal IDs or infer native assets from missing token contracts.
 For example, 15.25 USDC at 6 decimals is the integer string `15250000`.
 Only identified EVM sources are listed in this version. Omitted sources are not
@@ -187,7 +188,7 @@ approval ID once the existing approval policy is satisfied.
 
 ### Network and gas selection
 
-Use `reah_transfer_sources` to select the exact wallet asset and network. If
+Use `reah_list_wallets` to select the exact wallet asset and network. If
 multiple networks match and the user did not select one, ask; an EVM address
 alone does not identify its network. Convert the requested amount using the
 source decimals, then call `reah_estimate_transfer` with the source IDs, recipient
