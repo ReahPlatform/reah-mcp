@@ -5,34 +5,8 @@ import { CallToolRequestSchema, CallToolResultSchema, ListToolsRequestSchema, ty
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { ReahOAuth } from './oauth.js';
 import { LocalError, safeError, VERSION } from './config.js';
-import { callFinancialTool, WRITE_TOOLS } from './transfers.js';
-
-// New upstream tools require review before a local client release exposes them.
-const READS = new Set([
-  'reah_list_entities', 'reah_catalog', 'reah_get_entity', 'reah_list_balances', 'reah_transfer_sources',
-  'reah_list_wallets', 'reah_list_banking_accounts', 'reah_get_transaction', 'reah_list_transactions',
-  'reah_list_settled_movements', 'reah_list_contacts', 'reah_list_invoices', 'reah_get_invoice',
-  'reah_list_approvals', 'reah_list_cards', 'reah_list_card_accounts', 'reah_list_card_transactions',
-  'reah_list_treasury_positions', 'reah_list_members', 'reah_list_assets', 'reah_search',
-]);
-
-// Preparation may lazily initialize an empty Gas Station, but never funds it.
-const PREPARATIONS = new Set(['reah_estimate_transfer']);
-
-export function reviewedTools(tools: Tool[]): Tool[] {
-  const names = new Set<string>();
-  return tools.filter(tool => {
-    if (names.has(tool.name)) throw new LocalError('Reah returned duplicate tool definitions.');
-    names.add(tool.name);
-    return (READS.has(tool.name) && tool.annotations?.readOnlyHint === true) || ((WRITE_TOOLS.has(tool.name) || PREPARATIONS.has(tool.name)) && tool.annotations?.readOnlyHint === false);
-  }).map(tool => {
-    if (!WRITE_TOOLS.has(tool.name)) return tool;
-    const inputSchema = structuredClone(tool.inputSchema);
-    for (const key of ['_proof','requestSignature','signatures']) delete inputSchema.properties?.[key];
-    if (inputSchema.required) inputSchema.required = inputSchema.required.filter(key => !['_proof','requestSignature','signatures'].includes(key));
-    return { ...tool, inputSchema };
-  });
-}
+import { callSignedTool } from './transfers.js';
+import { localProtocol, publicTools, SIGNATURE_FIELDS } from './catalog.js';
 
 export class RemoteReah {
   private client: Client | undefined;
@@ -85,16 +59,18 @@ export class RemoteReah {
       if (tools.length > 500 || (cursor && seen.has(cursor))) throw new LocalError('Reah returned an invalid tool catalog.');
       if (cursor) seen.add(cursor);
     } while (cursor);
-    this.tools = reviewedTools(tools);
+    this.tools = publicTools(tools);
     return this.tools;
   }
 
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal) {
-    // Use the deployed catalog loaded for this connection, without an extra list request per read.
-    if (!READS.has(name) && !WRITE_TOOLS.has(name) && !PREPARATIONS.has(name)) throw new LocalError('This tool is not available in the reviewed catalog.');
+    // Only the authenticated server's published catalog determines availability.
     if (!this.tools.length) await this.list(signal);
-    if (!this.tools.some(tool => tool.name === name)) throw new LocalError('This tool is not available in the reviewed catalog.');
-    if (WRITE_TOOLS.has(name)) return callFinancialTool(name,args,await this.oauth.signingKey(),this.oauth.config.server,
+    const tool = this.tools.find(tool => tool.name === name);
+    if (!tool) throw new LocalError('This tool is not available in the current Reah catalog.');
+    if (SIGNATURE_FIELDS.some(field => Object.hasOwn(args, field))) throw new LocalError('Signing material is supplied by the local client, not tool arguments.');
+    const protocol = localProtocol(tool);
+    if (protocol?.mode === 'signed') return callSignedTool(name,protocol.signing,args,await this.oauth.signingKey(),this.oauth.config.server,
       (tool, input, callSignal) => this.invoke(tool,input,callSignal),signal);
     return this.invoke(name,args,signal);
   }

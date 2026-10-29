@@ -7,7 +7,7 @@ import { LocalError } from './config.js';
 import { signApprovalPayload, type DeviceKey } from './signing.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-export const WRITE_TOOLS = new Set(['reah_transfer', 'reah_execution']);
+import type { SigningProtocol } from './catalog.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const amount = /^[1-9][0-9]{0,77}$/;
 const stagingKey = `-----BEGIN PUBLIC KEY-----
@@ -46,7 +46,7 @@ export function validateSigningContext(value: unknown, server: string, entityId:
 }
 
 export function operationProof(key: DeviceKey, context: SigningContext, tool: string, args: Record<string, unknown>) {
- if (!WRITE_TOOLS.has(tool)) throw new LocalError('Unsupported signing operation.');
+ if (!/^[a-zA-Z0-9_.-]{1,128}$/.test(tool)) throw new LocalError('Invalid operation name.');
  const payload = JSON.stringify({ domain: 'reah.mcp.operation.v1', resource: context.resource, connectionId: context.connectionId,
   tool, entityId: context.binding.entityId, nonce: randomUUID(), expiresAt: Math.floor(Date.now()/1000)+60, arguments: args });
  return { payload, signature: sign('sha256', Buffer.from(payload), { key: key.privateKey, dsaEncoding: 'ieee-p1363' }).toString('hex') };
@@ -96,9 +96,9 @@ export function executionStamp(key: DeviceKey, context: SigningContext, request:
  return { requestId:item.requestId, signature:stamp };
 }
 
-export async function callFinancialTool(name: string, args: Record<string, unknown>, key: DeviceKey, server: string, invoke: Invoke, signal?: AbortSignal, verificationKey?: string): Promise<CallToolResult> {
- if (!WRITE_TOOLS.has(name)) throw new LocalError('Unsupported financial tool.');
- if (name === 'reah_transfer') validateTransferArgs(args);
+export async function callSignedTool(name: string, protocol: SigningProtocol, args: Record<string, unknown>, key: DeviceKey, server: string, invoke: Invoke, signal?: AbortSignal, verificationKey?: string): Promise<CallToolResult> {
+ if (!['approval-send-v2','turnkey-execution-v1'].includes(protocol)) throw new LocalError('Unsupported signing protocol.');
+ if (protocol === 'approval-send-v2') validateTransferArgs(args);
  else if (Object.keys(args).some(key => !['entityId','approvalId'].includes(key)) || typeof args.approvalId !== 'string' || !uuid.test(args.approvalId)) throw new LocalError('Execution requires entityId and the original approvalId; do not supply signatures.');
  if (typeof args.entityId !== 'string' || !uuid.test(args.entityId)) throw new LocalError('An authorized entityId is required.');
  const contextResult = await invoke('reah_signing_context',{entityId:args.entityId},signal);
@@ -111,16 +111,7 @@ export async function callFinancialTool(name: string, args: Record<string, unkno
   return invoke(name,{...input,_proof:proof},signal);
  };
  try {
-  if (name === 'reah_transfer') {
-   const estimateArgs = Object.fromEntries(['entityId','walletId','networkId','instrumentId','toAddress','amount'].map(field=>[field,args[field]]));
-   const estimate = await invoke('reah_estimate_transfer',estimateArgs,signal);
-   if (estimate.isError) return estimate;
-   const data = resultData(estimate);
-   const quoted = object(data.transfer);
-   if (Object.entries(estimateArgs).some(([field,value])=>quoted[field]!==value)) throw new LocalError('The balance estimate does not match this transfer.');
-   const balance = object(data.assetBalance);
-   const gas = Array.isArray(data.gasOptions) ? data.gasOptions.find(item=>item && typeof item==='object' && item.gasSource===args.gasSource) : undefined;
-   if (balance.sufficient !== true || !gas || gas.sufficient !== true) throw new LocalError('The selected wallet cannot cover the transfer and gas, or the balance check is unavailable. Do not switch network or gas payer automatically.');
+  if (protocol === 'approval-send-v2') {
    return await submit({...args,requestSignature:transferIntent(key,context,args)});
   }
   const result = await submit(args);
@@ -135,7 +126,7 @@ export async function callFinancialTool(name: string, args: Record<string, unkno
   return await submit({...args,signatures});
  } catch (error) {
   if (error instanceof LocalError) throw error;
-  if (!submitted) throw new LocalError('The balance check could not be completed. No transfer was submitted.');
+  if (!submitted) throw new LocalError('Signing preparation could not be completed. No operation was submitted.');
   throw new LocalError('The transfer outcome could not be confirmed. Check the original requestId or approvalId before retrying. Do not create a replacement transfer.');
  }
 }

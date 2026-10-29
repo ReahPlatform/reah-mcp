@@ -44,10 +44,20 @@ separate from server startup so a browser consent step cannot exhaust the host's
 MCP initialization timeout.
 
 First ask for the authorized businesses and confirm the returned names and IDs.
-The local client forwards the live reviewed tool schemas, descriptions and
-results. It does not duplicate financial conversions or accept arbitrary
-GraphQL. Only `reah_transfer` and `reah_execution` are accepted as financial tools when
-the server enables them. Other unreviewed tools are excluded. See the [tool reference](tools.md).
+The Gateway owns the live tool names, schemas, descriptions and availability.
+The local client does not keep a business-tool allowlist. Legacy read-only tools
+work without extra metadata; preparation and signed tools declare the supported
+local protocol through tool `_meta`. Unknown protocol versions are hidden rather
+than being forwarded unsigned. The currently deployed financial tools are
+`reah_transfer` and `reah_execution`; adding another tool using an existing
+signing format does not require a local release.
+
+The local client retains OAuth, OS credential storage, exact intent construction,
+operation proofs and verified Turnkey signature continuation. It does not pick
+accounts/networks, calculate amounts or orchestrate balance/fee queries. The
+Agent follows the live tool descriptions for that workflow. Signing-format,
+credential-storage or local security changes still require a client update.
+See [the local protocol](local-protocol.md) and [tool reference](tools.md).
 
 ## Reconnect and disconnect
 
@@ -187,8 +197,12 @@ The estimate returns two gas options: wallet fees in native-token major units
 with a USD equivalent, and Gas Station fees in USD dollars. Existing Reah buffers
 are included. Balance checks use the standard-wallet and Gas Station snapshots also used by
 Web. For native-token sends, wallet gas requires amount plus fee; Gas Station
-requires enough USD balance. The client refreshes this check before submission
-and stops on insufficient or unavailable balances. These are snapshots, not
+requires enough USD balance. The Agent must request a fresh estimate for the exact transfer terms before
+submission, check `assetBalance.sufficient` and the selected gas option
+`sufficient`, and stop to ask the user when either is false or unavailable.
+The local proxy does not issue this query automatically. These instructions are
+not an authorization boundary; existing server-side preparation and execution
+checks remain authoritative. These are snapshots, not
 reservations or fee caps; preparation and execution check again and can reprice.
 The preparation query may initialize an empty Gas Station record, like Web; it
 never funds that record and is advertised as non-read-only and non-destructive. Do not silently change

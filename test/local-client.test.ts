@@ -16,7 +16,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from '@model
 import { configure, safeError } from '../src/config.js';
 import { callbackListener } from '../src/callback.js';
 import { ReahOAuth } from '../src/oauth.js';
-import { RemoteReah, reviewedTools, serve } from '../src/proxy.js';
+import { RemoteReah, serve } from '../src/proxy.js';
+import { publicTools } from '../src/catalog.js';
 import { generateDeviceKey, signApprovalPayload } from '../src/signing.js';
 import type { Session, Store } from '../src/store.js';
 
@@ -46,6 +47,7 @@ const tools: Tool[] = [
 
 async function fixture() {
   const store = new MemoryStore();
+  let catalog = tools;
   let registrationCount = 0;
   let exchanges = 0;
   let refreshes = 0;
@@ -123,7 +125,7 @@ async function fixture() {
         const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
         transports.push(transport);
         const upstream = new Server({ name: 'mock-reah-gateway', version: '1' }, { capabilities: { tools: {} } });
-        upstream.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+        upstream.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: catalog }));
         upstream.setRequestHandler(CallToolRequestSchema, async req => {
           remoteCalls++;
           if (req.params.name === 'reah_list_entities') return { content: [{ type: 'text', text: selection }],
@@ -160,6 +162,7 @@ async function fixture() {
     counts: () => ({ registrationCount, exchanges, refreshes, revokes, remoteCalls }),
     loseRotation: () => { rotationLost = true; },
     failRevocation: (fail: boolean) => { revokeUnavailable = fail; },
+    catalog: (value: typeof tools) => { catalog = value; },
     select: (entity: string) => { selection = entity; },
     metadata: (value: Record<string, unknown>) => { metadataOverride = value; },
     close: async () => { await Promise.all(transports.map(t => t.close())); },
@@ -201,6 +204,27 @@ test('complete local flow: browser OAuth, MCP initialize/list/call, refresh, new
     assert.equal(disconnected.isError, true);
     assert.match(JSON.stringify(disconnected), /not connected/);
   } finally { await host.close(); await local?.close(); await f.close(); }
+});
+
+test('running proxy discovers new server tools on list refresh and blocks model signing fields', async () => {
+  const f = await fixture();
+  const remote = new RemoteReah(f.oauth,f.mockFetch);
+  try {
+    await f.login();
+    await remote.list();
+    const added = { ...tools[1]!, name: 'reah_new_query' };
+    f.catalog([...tools,added]);
+    assert.ok((await remote.list()).some(tool => tool.name === added.name));
+    assert.equal((await remote.call(added.name,{entityId:'company-a'})).isError,undefined);
+    const before = f.counts().remoteCalls;
+    for (const field of ['_proof','requestSignature','signatures']) {
+      await assert.rejects(remote.call(added.name,{entityId:'company-a',[field]:{}}),/Signing material/);
+    }
+    assert.equal(f.counts().remoteCalls,before);
+    f.catalog(tools);
+    await remote.list();
+    await assert.rejects(remote.call(added.name,{entityId:'company-a'}),/not available/);
+  } finally { await remote.close(); await f.close(); }
 });
 
 test('simultaneous clients refresh once and reload the rotated credentials', async () => {
@@ -303,10 +327,10 @@ test('signatures match Web P-256, compressed key and IEEE P1363 base64-text prot
   assert.throws(() => signApprovalPayload({ ...key, publicKey: generateDeviceKey().publicKey }, payload));
 });
 
-test('tool catalog fails closed for unknown names, missing read annotations and duplicate names', () => {
-  assert.deepEqual(reviewedTools([{ ...tools[0]!, annotations: {} },
-    { name: 'unknown', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }]), []);
-  assert.throws(() => reviewedTools([tools[0]!, tools[0]!]));
+test('catalog follows new server read tools and rejects missing annotations and duplicates', () => {
+  const added = { name: 'new_server_query', inputSchema: { type: 'object' as const }, annotations: { readOnlyHint: true } };
+  assert.deepEqual(publicTools([{ ...tools[0]!, annotations: {} }, added]), [added]);
+  assert.throws(() => publicTools([tools[0]!, tools[0]!]));
 });
 
 test('server and profile cannot inject credentials, callback paths or HTTP destinations', () => {
