@@ -1,9 +1,23 @@
 # Local MCP client
 
 The optional Node.js client serves Reah tools over stdio. The existing hosted
-plugin remains the default. The npm package name is `@reah/mcp`. This package is
-under local development and has not been published to npm; do not assume an
-`npx` package is available yet.
+plugin remains the default. The npm package name is `@reahplatform/mcp`.
+Check the official registry for available versions before using `npx`:
+
+```sh
+npm view @reahplatform/mcp version --registry=https://registry.npmjs.org
+```
+
+For a published version, replace `VERSION` with its exact version:
+
+```sh
+npx --yes @reahplatform/mcp@VERSION login --profile default
+```
+
+To serve tools, configure your AI client's stdio connection with command `npx`
+and arguments `["--yes", "@reahplatform/mcp@VERSION", "serve", "--profile", "default"]`.
+Package availability does not imply that optional financial features are enabled
+on the server; those features also require owner-confirmed credential registration.
 
 Maintainers use [Lerna to prepare and publish npm releases](releases.md).
 

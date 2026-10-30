@@ -1,7 +1,7 @@
 # npm releases
 
 Lerna manages versions, `CHANGELOG.md`, Git release commits and tags for the
-optional `@reah/mcp` client. It manages the existing root package; no workspace
+optional `@reahplatform/mcp` client. It manages the existing root package; no workspace
 or source-directory move is required. Hosted plugin manifests have their own
 version and are not changed by an npm release.
 
@@ -13,8 +13,8 @@ development dependency and is not installed by consumers.
 
 Before the first public release:
 
-1. Confirm that Reah controls the npm `@reah` organization and can publish
-   `@reah/mcp` as a public package.
+1. Confirm that Reah controls the npm `@reahplatform` organization and can publish
+   `@reahplatform/mcp` as a public package.
 2. Configure an npm trusted publisher for GitHub owner `ReahPlatform`, repository
    `reah-mcp`, workflow `publish-npm.yml`. Follow npm's current setup requirements;
    an initial authenticated publish may be needed before package settings exist.
@@ -83,8 +83,8 @@ result, inspect npm and the job log before retrying.
 After publishing, verify the version and executable from a clean environment:
 
 ```sh
-npm view @reah/mcp version --registry=https://registry.npmjs.org
-npx --yes @reah/mcp@0.1.1 --help
+npm view @reahplatform/mcp version --registry=https://registry.npmjs.org
+npx --yes @reahplatform/mcp@0.1.1 --help
 ```
 
 No npm release has been performed merely by adding this configuration. Do not

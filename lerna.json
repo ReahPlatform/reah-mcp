@@ -11,7 +11,7 @@
       "allowBranch": "main",
       "conventionalCommits": true,
       "tagVersionPrefix": "mcp-v",
-      "message": "chore(release): @reah/mcp %s"
+      "message": "chore(release): @reahplatform/mcp %s"
     }
   }
 }

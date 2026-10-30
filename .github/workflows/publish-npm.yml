@@ -50,7 +50,7 @@ jobs:
           import fs from 'node:fs';
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const lerna = JSON.parse(fs.readFileSync('lerna.json', 'utf8'));
-          assert.equal(pkg.name, '@reah/mcp');
+          assert.equal(pkg.name, '@reahplatform/mcp');
           assert.equal(process.env.RELEASE_TAG, `mcp-v${pkg.version}`);
           assert.equal(lerna.version, pkg.version);
           JS

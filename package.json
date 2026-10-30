@@ -1,5 +1,5 @@
 {
-  "name": "@reah/mcp",
+  "name": "@reahplatform/mcp",
   "version": "0.1.0",
   "description": "Local Reah MCP client with browser OAuth and secure device credentials.",
   "type": "module",
