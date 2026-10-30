@@ -1,8 +1,9 @@
 # Local MCP client
 
 The optional Node.js client serves Reah tools over stdio. The existing hosted
-plugin remains the default. This package is under local development and has not
-been published to npm; do not assume an `npx` package is available yet.
+plugin remains the default. The npm package name is `@reah/mcp`. This package is
+under local development and has not been published to npm; do not assume an
+`npx` package is available yet.
 
 ## Run from a checkout
 
