@@ -16,7 +16,7 @@ JSON text content block:
   "graphql": {
     "data": {
       "entity": {
-        "totalBalance": {"usdAmount": "12345.67", "priceVersion": "example"}
+        "totalBalance": {"usdAmount": "12345.67", "priceVersion": "2026-10-26T09:00:00.146Z"}
       }
     }
   },
@@ -77,6 +77,10 @@ selections because their semantics cannot be established reliably. Masked card
 limits and card activity metadata remain available. Do not infer spending totals
 from activity metadata or treat missing fields as zero.
 
+`Balance.priceVersion` is a nullable UTC timestamp identifying the valuation
+price version. Gateway converts Ledger's Unix milliseconds to this timestamp.
+It is not the balance update time or proof that all source data is current.
+
 ## Missing values and errors
 
 A null or empty source value has no normalized value. Its path appears in
@@ -94,12 +98,34 @@ Never report such a result as an unqualified successful total.
 | Wallets | At most 100; no continuation; completeness is `not_proven` |
 | Treasury | Latest at most 200 matching positions, ordered by creation time and ID descending; positions and summary have no continuation and completeness is `not_proven` |
 | Assets | Full entity catalog; no `first`, `after`, or synthetic cursor |
-| Tasks | Pending tasks assigned to the user; no continuation or complete-history guarantee |
 | Search | Bounded discovery matches; not a complete financial population |
-| Settled movements | Preserve ingestion coverage, data timestamp, watermarks, valuation status, selection flags, and exclusion counts even after all pages are read |
+| Settled movements | Records posted in Reah within the requested time range. Preserve coverage flags, data timestamp, watermarks, valuation status, selection flags, and exclusion counts even after all pages are read |
 
 A successful response and an exhausted cursor do not prove that all upstream
 records have been ingested. State material gaps, source limits, and filters in
 analysis. Ordinary transaction lifecycle records and approval completion do not
-substitute for settled movements. Existing statement export metadata does not
-grant file access or permission to generate a statement.
+substitute for settled movements. Statement exports and files are not exposed
+through MCP.
+
+## Contact and transaction associations
+
+`reah_list_contacts` returns current saved chain addresses with address IDs,
+labels and network IDs/names. The transaction list and `reah_get_transaction`
+select `fromTo.from/to` party type, address(es), instrument ID/network and a
+nullable `contact { id name type }` using the same resolver as Reah Web.
+Blockchain matches require the selected entity, instrument network and address;
+an address alone is not enough. Bank matches use saved account details inside
+the resolver without returning banking account numbers.
+
+Contact names and labels are user-maintained. They are not verified recipient
+identity or evidence of ownership at the transaction date. For grouped address
+parties, the resolver returns the first matching contact, not one association
+per address; do not attribute all addresses or the whole amount to it. Null
+means no match could be resolved, including missing network/party information.
+Resolver failures remain GraphQL errors. Bounded name/address search does not
+replace the association or prove its absence.
+
+Use `SettledMovement.transactionId` (not `movementId` or `humanId`) to call
+`reah_get_transaction` with the same entity. The existing transaction ownership
+check still applies. Keep settled movements as the monetary source; these
+party selections intentionally contain no ambiguous amount fields.
