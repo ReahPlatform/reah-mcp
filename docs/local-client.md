@@ -5,6 +5,8 @@ plugin remains the default. The npm package name is `@reah/mcp`. This package is
 under local development and has not been published to npm; do not assume an
 `npx` package is available yet.
 
+Maintainers use [Lerna to prepare and publish npm releases](releases.md).
+
 ## Run from a checkout
 
 Use Node.js 22.16 or newer with a desktop OS credential store. Linux requires an

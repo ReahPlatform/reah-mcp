@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/lerna/schemas/lerna-schema.json",
+  "version": "0.1.0",
+  "packages": ["."],
+  "npmClient": "npm",
+  "command": {
+    "publish": {
+      "registry": "https://registry.npmjs.org"
+    },
+    "version": {
+      "allowBranch": "main",
+      "conventionalCommits": true,
+      "tagVersionPrefix": "mcp-v",
+      "message": "chore(release): @reah/mcp %s"
+    }
+  }
+}

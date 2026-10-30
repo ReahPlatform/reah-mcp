@@ -25,7 +25,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.test.json --noEmit",
     "test": "tsc -p tsconfig.test.json && node --test .build/test/*.test.js",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "release:version": "make lint && make test && make build && lerna version --no-push",
+    "release:publish": "lerna publish from-package --yes"
   },
   "dependencies": {
     "@bufbuild/protobuf": "2.2.3",
@@ -37,6 +39,11 @@
   "devDependencies": {
     "@types/node": "22.19.0",
     "@types/proper-lockfile": "4.1.4",
+    "lerna": "10.1.1",
     "typescript": "5.9.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }
