@@ -13,8 +13,11 @@ https://platform.stg.reah.com/mcp
 
 The Gateway runs the MCP service and executes predefined GraphQL reads through
 existing business resolvers. This repository distributes client configurations,
-installation instructions, and an optional analysis skill. No local server, Go
-runtime, Agent credential, or manually configured bearer token is required.
+installation instructions, an optional analysis skill, and an optional
+[local TypeScript client](docs/local-client.md). The hosted connection requires
+no local runtime, Agent credential, or manually configured bearer token. The
+optional local client also supports explicitly authorized transfer and execution
+when the matching server features are enabled; see its signing boundary.
 
 ## Connect
 

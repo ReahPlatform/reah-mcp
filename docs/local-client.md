@@ -1,0 +1,215 @@
+# Local MCP client
+
+The optional Node.js client serves Reah tools over stdio. The existing hosted
+plugin remains the default. The npm package name is `@reah/mcp`. This package is
+under local development and has not been published to npm; do not assume an
+`npx` package is available yet.
+
+Maintainers use [Lerna to prepare and publish npm releases](releases.md).
+
+## Run from a checkout
+
+Use Node.js 22.16 or newer with a desktop OS credential store. Linux requires an
+unlocked Secret Service session. macOS uses Keychain; Windows uses Credential
+Manager. There is no plaintext credential fallback.
+
+```sh
+npm ci --ignore-scripts
+npm run build
+node dist/client/cli.js login --profile default
+```
+
+The login command registers this local client, opens Reah in your browser, and
+waits up to five minutes for consent. Sign in, select one or more businesses and
+an access duration, then authorize. The temporary callback listener binds only
+to `127.0.0.1` on an ephemeral port. It checks state and exchanges the code with
+PKCE S256 before showing success. Browser cookies and Web signing keys are never
+copied into the local client.
+
+Register the built executable in your AI client's local stdio configuration,
+substituting the absolute checkout path:
+
+```json
+{
+  "mcpServers": {
+    "reah-local": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/reah-mcp/dist/client/cli.js", "serve", "--profile", "default"]
+    }
+  }
+}
+```
+
+The same command and argument list work with stdio-capable Codex, Claude Code
+and Cursor clients. Run login before enabling the connection. Reload the MCP
+connection if the host previously loaded it without credentials. Login is
+separate from server startup so a browser consent step cannot exhaust the host's
+MCP initialization timeout.
+
+First ask for the authorized businesses and confirm the returned names and IDs.
+The Gateway owns the live tool names, schemas, descriptions and availability.
+The local client does not keep a business-tool allowlist. Legacy read-only tools
+work without extra metadata; preparation and signed tools declare the supported
+local protocol through tool `_meta`. Unknown protocol versions are hidden rather
+than being forwarded unsigned. The currently deployed financial tools are
+`reah_transfer` and `reah_execution`; adding another tool using an existing
+signing format does not require a local release.
+
+The local client retains OAuth, OS credential storage, exact intent construction,
+operation proofs and verified Turnkey signature continuation. It does not pick
+accounts/networks, calculate amounts or orchestrate balance/fee queries. The
+Agent follows the live tool descriptions for that workflow. Signing-format,
+credential-storage or local security changes still require a client update.
+See [the local protocol](local-protocol.md) and [tool reference](tools.md).
+
+## Reconnect and disconnect
+
+```sh
+node dist/client/cli.js status --profile default
+node dist/client/cli.js login --profile default
+node dist/client/cli.js logout --profile default
+```
+
+Status reports local credential presence, access-token expiry and the public
+device key. It does not prove that a connection is still valid on the server.
+Login disables the old local credentials and revokes the previous connection
+before opening new consent. The same profile reuses its registered client ID.
+All tools reload credentials on each HTTP request, so running local clients use
+the new grant instead of a cached bearer token. A request already in flight may
+still finish during reconnection; verify the newly authorized business list
+before continuing.
+
+Refresh is automatic, serialized across processes sharing a profile, and saves
+rotated credentials in the OS vault. An interrupted refresh requires a new login;
+the client never retries a refresh token whose consumption is uncertain. Logout
+revokes the whole connection and removes the local credentials and device key.
+If revocation cannot be confirmed, local access stays disabled and the command
+directs you to disconnect the app in Reah Settings.
+
+The default server is `https://platform.stg.reah.com/mcp`. Use matching `--server`
+and `--profile` arguments for every command and the host configuration. Profiles
+isolate clients, credentials and keys. Tokens and private keys live under the
+`Reah MCP Local` OS credential-store namespace. `~/.reah-mcp` contains only empty
+coordination files and transient locks; it contains no credentials. The program
+does not read Codex's MCP credential store or invoke the macOS `security` CLI.
+
+## Signing boundary
+
+Each login generates a fresh P-256 key for that connection and keeps its private
+key in the OS vault. Ordinary login remains read-only. To opt into credential
+preparation on a server that advertises support:
+
+```sh
+node dist/client/cli.js login --enroll-key --profile default
+node dist/client/cli.js status --profile default
+# Resume after an interrupted proof submission:
+node dist/client/cli.js enroll-key --profile default
+```
+
+The public key is fixed in the OAuth request before browser consent. Backend
+binds it to the authenticated user, connection and selected businesses. The
+client checks the Hodor proof's purpose, server, client, public key, connection,
+businesses and expiry, then signs its exact UTF-8 bytes using SHA-256/P-256 and
+a 64-byte IEEE P1363 signature. It sends only the signature; it never sends the
+private key or exposes an arbitrary signing tool. Repeated preparation uses the
+same challenge and does not extend its lifetime.
+
+**Successful possession proof means `awaiting_provider`, not an active Turnkey
+credential.** When discovery advertises credential registration, login opens the
+Reah registration page. An enterprise owner reviews the connection, local public
+key, selected businesses and expiry, then confirms registration for all listed
+businesses. Web reuses its verified browser login key to stamp each separate
+Turnkey registration request. Expired or unavailable browser verification requires
+sign-in again; it is not bypassed. The existing per-step Passkey path remains
+available as an alternative.
+
+This separately consents to transfer initiation and execution under current
+business permissions and approval policy; the OAuth `reah.read` grant alone
+cannot move money. Each business has an independent MCP identity and restricted
+policies. The browser login key and OTP proof never enter the local MCP program;
+the MCP private key never enters the browser. Unknown registration outcomes stop
+for reconciliation rather than automatically recreating identities.
+
+After registration, the local client exposes:
+
+- `reah_transfer`: creates a single-recipient wallet transfer approval. Supply
+  source instrument-account, wallet, network and instrument IDs, source and
+  recipient addresses, the canonical CAIP-19 asset, and a positive integer string
+  in the asset's smallest unit. For example, 1 USDC with 6 decimals is `1000000`.
+  Wallet balances support `GAS_SOURCE_FROM_WALLET` and `GAS_SOURCE_GAS_STATION`. The selected gas payer is included in the signed intent.
+  Use a stable UUID `requestId` for the intended transfer.
+- `reah_execution`: executes that transfer approval once its existing approval
+  policy is satisfied. It does not approve a pending request. Supply `entityId`
+  and the original `approvalId`. The local program verifies Hodor's signed
+  request, signs its exact Turnkey body and submits the signature continuation.
+  A successful request is not proof of chain settlement.
+
+The model never supplies signatures, private keys or provider request bodies.
+The program signs an exact connection/entity/operation/arguments proof and a
+Web-compatible protobuf transfer intent. Execution additionally verifies the
+pinned environment-specific Hodor public key. The protobuf source is the
+canonical Conductor `approval_details.proto`, using the generated artifact shared
+with Reah Web; its generated header records the schema path and generator.
+
+Deploy matching Hodor, Backend and Gateway contracts and migrations before
+enabling their separate enrollment, provider-registration and transfer-execution
+flags. All flags default off. The hosted plugin still needs no local process;
+financial calls require the registered local key in addition to OAuth.
+
+Disconnect immediately blocks new Gateway calls. Backend durably retries Hodor
+revocation; Hodor rejects revoked keys before submitting or coapproving provider
+requests and asynchronously removes provider credentials. Requests already
+submitted cannot be undone. Neither failed submissions nor refreshes with an
+unknown outcome are retried automatically. Inspect the original request/approval
+before taking any recovery action; do not create a replacement transfer.
+
+## Checks
+
+`make lint`, `make test` and `make build` check both the hosted plugin and local
+client. Local integration tests exercise browser callbacks, MCP initialization
+and read calls, rotating refresh, changed business selection and revocation
+against a simulated OAuth/Gateway service. Financial tests cover exact protobuf
+intent signing, the two-stage execution protocol, signed provider requests,
+argument tampering, missing credentials and ambiguous outcomes. They do not access your OS vault or
+real financial data. A live staging login is a separate manual verification.
+
+Future npm releases should be installed at an explicitly pinned version. The
+hosted plugin must not be changed to an unpublished local executable.
+
+### Choosing a transfer source
+
+After credential registration, use `reah_list_entities` and `reah_list_wallets`
+to select the business, wallet, blockchain account and instrument account.
+The wallet read returns exact IDs, addresses, network metadata and decimals;
+`normalized_values` at each instrument path supplies its reviewed `caip19`. Do
+not guess internal IDs or infer native assets from missing token contracts.
+For example, 15.25 USDC at 6 decimals is the integer string `15250000`.
+Only identified EVM sources are listed in this version. Omitted sources are not
+signable through this discovery flow; balances and gas are checked when the
+transfer is prepared. Call `reah_transfer`, then `reah_execution` for its original
+approval ID once the existing approval policy is satisfied.
+
+### Network and gas selection
+
+Use `reah_list_wallets` to select the exact wallet asset and network. If
+multiple networks match and the user did not select one, ask; an EVM address
+alone does not identify its network. Convert the requested amount using the
+source decimals, then call `reah_estimate_transfer` with the source IDs, recipient
+and amount in minor units. It uses the same fee estimator as Reah Web.
+
+The estimate returns two gas options: wallet fees in native-token major units
+with a USD equivalent, and Gas Station fees in USD dollars. Existing Reah buffers
+are included. Balance checks use the standard-wallet and Gas Station snapshots also used by
+Web. For native-token sends, wallet gas requires amount plus fee; Gas Station
+requires enough USD balance. The Agent must request a fresh estimate for the exact transfer terms before
+submission, check `assetBalance.sufficient` and the selected gas option
+`sufficient`, and stop to ask the user when either is false or unavailable.
+The local proxy does not issue this query automatically. These instructions are
+not an authorization boundary; existing server-side preparation and execution
+checks remain authoritative. These are snapshots, not
+reservations or fee caps; preparation and execution check again and can reprice.
+The preparation query may initialize an empty Gas Station record, like Web; it
+never funds that record and is advertised as non-read-only and non-destructive. Do not silently change
+the network or gas payer. Explicitly pass the selected `gasSource` to
+`reah_transfer`; the local program signs it together with the transfer details.
+The hosted read-only connection does not gain these credential-gated tools.

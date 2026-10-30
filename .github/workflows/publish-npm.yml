@@ -1,0 +1,63 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing MCP release tag (for example, mcp-v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      NX_DAEMON: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check release tag
+        run: |
+          [[ "$RELEASE_TAG" =~ ^mcp-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          git merge-base --is-ancestor "refs/tags/$RELEASE_TAG" origin/main
+          git checkout --detach "refs/tags/$RELEASE_TAG"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check package identity and version
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lerna = JSON.parse(fs.readFileSync('lerna.json', 'utf8'));
+          assert.equal(pkg.name, '@reah/mcp');
+          assert.equal(process.env.RELEASE_TAG, `mcp-v${pkg.version}`);
+          assert.equal(lerna.version, pkg.version);
+          JS
+      - run: npm ci --ignore-scripts
+      - run: make lint
+      - run: make test
+      - run: make build
+      - run: npm pack --dry-run
+      - name: Publish through npm trusted publishing
+        run: npm run release:publish

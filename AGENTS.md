@@ -8,12 +8,20 @@
   unless the user explicitly requests publication.
 - Run `make lint`, `make test`, and `make build` before opening or updating a pull
   request.
-- This repository distributes hosted MCP connection settings and portable skills.
+- This repository distributes hosted MCP connection settings, portable skills,
+  and an optional TypeScript stdio client.
   The Gateway owns OAuth, entity authorization, predefined GraphQL execution,
-  tool schemas, and financial normalization. Do not add a second local server.
+  tool schemas, and financial normalization. The local client follows the authenticated Gateway catalog and versioned signing
+  protocols without a business-tool name allowlist. Keep account/network selection
+  and balance/fee query orchestration in server-owned tool instructions for the Agent;
+  do not duplicate GraphQL or financial normalization in the local proxy.
+- Store local OAuth credentials and device keys in the OS credential store only.
+  Never expose an arbitrary signing tool or enroll keys through Web session APIs.
+  Device keys authorize transfers only after explicit owner-confirmed browser registration and live server validation.
 - Default plugin connections to staging until production is explicitly approved.
   Never package credentials, bearer headers, fixed entity IDs, or login sessions.
-- Keep MCP read-only. Document only tools, fields, units, and arguments verified
+- Keep the hosted plugin read-only. Document only tools, fields, units, and arguments verified
   against the Gateway catalog. Its live tool schemas are authoritative; do not
-  introduce arbitrary GraphQL, field selections, or financial write tools here.
+  introduce arbitrary GraphQL, field selections, or generic signing. The current server financial catalog is limited to reah_transfer and reah_execution;
+  new tools may reuse a supported signing protocol without a client name allowlist. The unsigned reah_estimate_transfer preparation tool may initialize an empty Gas Station through the existing Web resolver; it must not be advertised as read-only.
 - Keep the analysis skill general. Put tool reference details in documentation.
