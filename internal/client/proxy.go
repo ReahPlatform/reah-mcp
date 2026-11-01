@@ -1,0 +1,381 @@
+package client
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const localMeta = "reah.com/local"
+
+var signatureFields = []string{"_proof", "requestSignature", "signatures"}
+
+type protocol struct{ Mode, Signing string }
+
+func localProtocol(t *mcp.Tool) (protocol, bool) {
+	v, exists := t.Meta[localMeta]
+	if !exists {
+		return protocol{}, false
+	}
+	b, e := json.Marshal(v)
+	var d document
+	if e != nil || json.Unmarshal(b, &d) != nil || d["version"] != float64(1) {
+		return protocol{}, true
+	}
+	p := protocol{stringAt(d, "mode"), stringAt(d, "signing")}
+	if p.Mode == "internal" || p.Mode == "proxy" {
+		return p, true
+	}
+	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "turnkey-execution-v1"}, p.Signing) {
+		return p, true
+	}
+	return protocol{}, true
+}
+
+func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
+	seen := map[string]bool{}
+	out := []*mcp.Tool{}
+	for _, t := range all {
+		if t == nil || t.Name == "" || seen[t.Name] {
+			return nil, errors.New("invalid or duplicate Reah tool definition")
+		}
+		seen[t.Name] = true
+		p, hasMeta := localProtocol(t)
+		if t.Name == "reah_signing_context" || p.Mode == "internal" || (hasMeta && p.Mode == "") {
+			continue
+		}
+		b, e := json.Marshal(t.InputSchema)
+		if e != nil {
+			return nil, errConnection
+		}
+		var schema document
+		if json.Unmarshal(b, &schema) != nil || schema["type"] != "object" {
+			return nil, errors.New("invalid Reah tool input schema")
+		}
+		props, _ := schema["properties"].(map[string]any)
+		hasSignature := false
+		for _, k := range signatureFields {
+			if _, ok := props[k]; ok {
+				hasSignature = true
+			}
+		}
+		if p.Mode != "signed" {
+			if hasSignature || (!hasMeta && (t.Annotations == nil || !t.Annotations.ReadOnlyHint)) {
+				continue
+			}
+			out = append(out, t)
+			continue
+		}
+		if t.Annotations == nil || t.Annotations.ReadOnlyHint {
+			continue
+		}
+		for _, k := range signatureFields {
+			delete(props, k)
+		}
+		if required, ok := schema["required"].([]any); ok {
+			kept := []any{}
+			for _, k := range required {
+				str, _ := k.(string)
+				if !slices.Contains(signatureFields, str) {
+					kept = append(kept, k)
+				}
+			}
+			schema["required"] = kept
+		}
+		copy := *t
+		copy.InputSchema = schema
+		out = append(out, &copy)
+	}
+	return out, nil
+}
+
+type bearerTransport struct {
+	OAuth *OAuth
+	Base  http.RoundTripper
+}
+
+func (t bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.String() != t.OAuth.Config.Server {
+		return nil, errors.New("blocked unexpected MCP destination")
+	}
+	token, e := t.OAuth.AccessToken(r.Context())
+	if e != nil {
+		return nil, e
+	}
+	clone := r.Clone(r.Context())
+	clone.Header = r.Header.Clone()
+	clone.Header.Set("Authorization", "Bearer "+token)
+	base := t.Base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	response, e := base.RoundTrip(clone)
+	if e != nil {
+		return nil, errConnection
+	}
+	if response.StatusCode == 401 {
+		_ = response.Body.Close()
+		return nil, errors.New("Reah authorization expired or was revoked; log in again and reconnect")
+	}
+	return response, nil
+}
+
+type Remote struct {
+	OAuth   *OAuth
+	Version string
+	mu      sync.Mutex
+	session *mcp.ClientSession
+}
+
+func (r *Remote) connected(ctx context.Context) (*mcp.ClientSession, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.session != nil {
+		return r.session, nil
+	}
+	h := httpClient()
+	h.Transport = bearerTransport{r.OAuth, r.OAuth.HTTP.Transport}
+	c := mcp.NewClient(&mcp.Implementation{Name: "reah-go-mcp", Version: r.Version}, &mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{}, MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true}})
+	s, e := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: r.OAuth.Config.Server, HTTPClient: h, MaxRetries: -1, DisableStandaloneSSE: true, MaxEventSize: 2 * 1024 * 1024}, nil)
+	if e != nil {
+		return nil, errConnection
+	}
+	r.session = s
+	return s, nil
+}
+func (r *Remote) Close() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.session != nil {
+		_ = r.session.Close()
+		r.session = nil
+	}
+}
+func (r *Remote) List(ctx context.Context) ([]*mcp.Tool, error) {
+	s, e := r.connected(ctx)
+	if e != nil {
+		return nil, e
+	}
+	var all []*mcp.Tool
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		p, e := s.ListTools(ctx, &mcp.ListToolsParams{Cursor: cursor})
+		if e != nil {
+			return nil, errConnection
+		}
+		all = append(all, p.Tools...)
+		cursor = p.NextCursor
+		if len(all) > 500 || len(seen) > 500 || (cursor != "" && seen[cursor]) {
+			return nil, errors.New("invalid Reah tool catalog")
+		}
+		if cursor == "" {
+			break
+		}
+		seen[cursor] = true
+	}
+	return publicTools(all)
+}
+
+type invoke func(context.Context, string, document) (*mcp.CallToolResult, error)
+
+func (r *Remote) invoke(ctx context.Context, name string, args document) (*mcp.CallToolResult, error) {
+	s, e := r.connected(ctx)
+	if e != nil {
+		return nil, e
+	}
+	result, e := s.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if e != nil {
+		return nil, errConnection
+	}
+	return result, nil
+}
+func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.CallToolResult, error) {
+	for _, k := range signatureFields {
+		if _, ok := args[k]; ok {
+			return nil, errors.New("signing material is supplied by the local client, never tool arguments")
+		}
+	}
+	tools, e := r.List(ctx)
+	if e != nil {
+		return nil, e
+	}
+	var tool *mcp.Tool
+	for _, t := range tools {
+		if t.Name == name {
+			tool = t
+			break
+		}
+	}
+	if tool == nil {
+		return nil, errors.New("tool is unavailable in the current authenticated Reah catalog")
+	}
+	p, _ := localProtocol(tool)
+	if p.Mode != "signed" {
+		return r.invoke(ctx, name, args)
+	}
+	key, e := r.OAuth.signingKey(ctx)
+	if e != nil {
+		return nil, e
+	}
+	return callSigned(ctx, name, p.Signing, args, key, r.OAuth.Config.Server, r.invoke, "")
+}
+
+func callSigned(ctx context.Context, name, format string, args document, key DeviceKey, server string, call invoke, verificationKey string) (*mcp.CallToolResult, error) {
+	if !validUUID(stringAt(args, "entityId")) {
+		return nil, errors.New("an authorized entityId is required")
+	}
+	if format == "turnkey-execution-v1" {
+		for k := range args {
+			if k != "entityId" && k != "approvalId" && k != "business" {
+				return nil, errors.New("execution requires the original approvalId and no signing material")
+			}
+		}
+		if !validUUID(stringAt(args, "approvalId")) {
+			return nil, errors.New("execution requires the original approvalId")
+		}
+		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal"}, b) {
+			return nil, errors.New("unsupported financial execution business")
+		}
+	} else if format != "approval-send-v2" {
+		return nil, errors.New("unsupported local signing protocol")
+	}
+	contextResult, e := call(ctx, "reah_signing_context", document{"entityId": args["entityId"]})
+	if e != nil {
+		return nil, e
+	}
+	if contextResult.IsError {
+		return contextResult, nil
+	}
+	c, e := signingContext(contextResult.StructuredContent, server, stringAt(args, "entityId"), key)
+	if e != nil {
+		return nil, e
+	}
+	submit := func(input document) (*mcp.CallToolResult, error) {
+		proof, e := operationProof(key, c, name, input)
+		if e != nil {
+			return nil, e
+		}
+		body := cloneDocument(input)
+		body["_proof"] = proof
+		out, e := call(ctx, name, body)
+		if e != nil {
+			return nil, errors.New("operation outcome is unconfirmed; inspect the original requestId or approvalId before retrying; do not create a replacement")
+		}
+		return out, nil
+	}
+	if format == "approval-send-v2" {
+		intent, e := transferIntent(key, c, args, time.Now())
+		if e != nil {
+			return nil, e
+		}
+		body := cloneDocument(args)
+		body["requestSignature"] = intent
+		return submit(body)
+	}
+	out, e := submit(args)
+	if e != nil || out.IsError {
+		return out, e
+	}
+	b, e := json.Marshal(out.StructuredContent)
+	var d document
+	if e != nil || json.Unmarshal(b, &d) != nil {
+		return nil, errors.New("invalid execution response; inspect the original approval")
+	}
+	requests, exists := d["requiresSignatures"]
+	if !exists {
+		return out, nil
+	}
+	items, ok := requests.([]any)
+	if !ok || len(items) > 16 {
+		return nil, errors.New("invalid execution signature list")
+	}
+	if len(items) == 0 {
+		return out, nil
+	}
+	signatures := []any{}
+	seen := map[string]bool{}
+	for _, item := range items {
+		v, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("invalid execution signature request")
+		}
+		stamp, e := executionStamp(key, c, v, verificationKey)
+		if e != nil {
+			return nil, e
+		}
+		id := stringAt(stamp, "requestId")
+		if seen[id] {
+			return nil, errors.New("duplicate execution signing request")
+		}
+		seen[id] = true
+		signatures = append(signatures, stamp)
+	}
+	continuation := cloneDocument(args)
+	continuation["signatures"] = signatures
+	return submit(continuation)
+}
+func cloneDocument(d document) document {
+	out := document{}
+	for k, v := range d {
+		out[k] = v
+	}
+	return out
+}
+
+// NewServer keeps stdout exclusively for MCP. The remote catalog is loaded lazily,
+// so browser consent never blocks the host's MCP initialization handshake.
+func NewServer(remote *Remote, version string) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "reah-go-mcp", Version: version}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}, SupportedProtocolVersions: []string{"2025-11-25"}})
+	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			defer cancel()
+			switch method {
+			case "tools/list":
+				tools, e := remote.List(ctx)
+				if e != nil {
+					return nil, fmt.Errorf("Reah tool catalog could not be loaded; check login and connectivity")
+				}
+				return &mcp.ListToolsResult{Tools: tools}, nil
+			case "tools/call":
+				request, ok := req.(*mcp.CallToolRequest)
+				if !ok || request.Params == nil {
+					return nil, errors.New("invalid tool call")
+				}
+				if len(request.Params.Arguments) > 192*1024 {
+					return errorResult("Tool arguments exceed the local request limit"), nil
+				}
+				var args document
+				decoder := json.NewDecoder(bytes.NewReader(request.Params.Arguments))
+				decoder.UseNumber()
+				e := decoder.Decode(&args)
+				if len(request.Params.Arguments) == 0 {
+					args = document{}
+					e = nil
+				}
+				if e != nil || args == nil {
+					return errorResult("Tool arguments must be an object"), nil
+				}
+				out, e := remote.Call(ctx, request.Params.Name, args)
+				if e != nil {
+					return errorResult(e.Error()), nil
+				}
+				return out, nil
+			}
+			return next(ctx, method, req)
+		}
+	})
+	return s
+}
+func errorResult(message string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}
+}

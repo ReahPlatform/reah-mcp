@@ -1,36 +1,48 @@
 # Local MCP client
 
-The optional Node.js client serves Reah tools over stdio. The existing hosted
-plugin remains the default. The npm package name is `@reahplatform/mcp`.
-Check the official registry for available versions before using `npx`:
+The recommended local client is a standalone Go executable. It serves Reah's
+remote catalog over stdio and keeps OAuth tokens and the P-256 private key in
+the operating system credential store. Running it does not require Node.js,
+npm, or an npm account. The hosted read-only connection still requires no local
+program at all.
+
+## Install
+
+From a checkout, use Go 1.25 or newer:
 
 ```sh
-npm view @reahplatform/mcp version --registry=https://registry.npmjs.org
+go build -trimpath -o bin/reah-mcp ./cmd/reah-mcp
+./bin/reah-mcp --help
 ```
 
-For a published version, replace `VERSION` with its exact version:
+After these changes are on `main`, users with repository access can install:
 
 ```sh
-npx --yes @reahplatform/mcp@VERSION login --profile default
+GOPRIVATE=github.com/ReahPlatform/reah-mcp go install github.com/ReahPlatform/reah-mcp/cmd/reah-mcp@main
 ```
 
-To serve tools, configure your AI client's stdio connection with command `npx`
-and arguments `["--yes", "@reahplatform/mcp@VERSION", "serve", "--profile", "default"]`.
-Package availability does not imply that optional financial features are enabled
-on the server; those features also require owner-confirmed credential registration.
+For repeatable installations, replace `main` with an existing Go client release
+tag such as `v0.1.0`; this example does not announce an available release. Ensure
+`$(go env GOPATH)/bin` is in your PATH. This GitHub repository is currently private:
+Git credentials must already allow access. `GOPRIVATE` bypasses the public Go
+module proxy and checksum service; it does not grant access to the repository.
+No private Reah service modules are needed to build the executable.
 
-Maintainers use [Lerna to prepare and publish npm releases](releases.md).
+Maintainers can build six standalone archives for macOS, Linux and Windows
+(ARM64 and AMD64) with `make release-go VERSION=v0.1.0`. Once a checked GitHub
+release exists, users may download the matching archive, verify it against
+`SHA256SUMS`, unpack it and put `reah-mcp` on their PATH. Downloading a binary
+does not require Go. Private releases also require repository access. A public
+binary distribution would need a separate publishing decision.
 
-## Run from a checkout
-
-Use Node.js 22.16 or newer with a desktop OS credential store. Linux requires an
-unlocked Secret Service session. macOS uses Keychain; Windows uses Credential
-Manager. There is no plaintext credential fallback.
+A desktop OS credential store is required: Keychain on macOS, an unlocked Secret
+Service session on Linux, or Credential Manager on Windows. There is no
+plaintext fallback. The Go keyring library uses the operating system's storage
+facilities (including the system `security` helper on macOS). A first-use OS
+credential-store prompt may appear; subsequent access follows the OS policy.
 
 ```sh
-npm ci --ignore-scripts
-npm run build
-node dist/client/cli.js login --profile default
+reah-mcp login --profile default
 ```
 
 The login command registers this local client, opens Reah in your browser, and
@@ -40,15 +52,15 @@ to `127.0.0.1` on an ephemeral port. It checks state and exchanges the code with
 PKCE S256 before showing success. Browser cookies and Web signing keys are never
 copied into the local client.
 
-Register the built executable in your AI client's local stdio configuration,
-substituting the absolute checkout path:
+Register the installed executable in your AI client's stdio configuration. Use
+an absolute executable path if the host does not inherit your shell PATH:
 
 ```json
 {
   "mcpServers": {
     "reah-local": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/reah-mcp/dist/client/cli.js", "serve", "--profile", "default"]
+      "command": "reah-mcp",
+      "args": ["serve", "--profile", "default"]
     }
   }
 }
@@ -65,9 +77,12 @@ The Gateway owns the live tool names, schemas, descriptions and availability.
 The local client does not keep a business-tool allowlist. Legacy read-only tools
 work without extra metadata; preparation and signed tools declare the supported
 local protocol through tool `_meta`. Unknown protocol versions are hidden rather
-than being forwarded unsigned. The currently deployed financial tools are
-`reah_transfer` and `reah_execution`; adding another tool using an existing
-signing format does not require a local release.
+than being forwarded unsigned. The supported signing formats are wallet transfer intents (`approval-send-v2`)
+and verified execution continuations (`turnkey-execution-v1`). The Go adapter
+also preserves the optional financial `business` discriminator on execution.
+Other intent formats, including `approval-financial-v1`, remain hidden until a
+reviewed signing adapter is implemented. A new tool using an already supported
+format does not require a local release.
 
 The local client retains OAuth, OS credential storage, exact intent construction,
 operation proofs and verified Turnkey signature continuation. It does not pick
@@ -79,9 +94,9 @@ See [the local protocol](local-protocol.md) and [tool reference](tools.md).
 ## Reconnect and disconnect
 
 ```sh
-node dist/client/cli.js status --profile default
-node dist/client/cli.js login --profile default
-node dist/client/cli.js logout --profile default
+reah-mcp status --profile default
+reah-mcp login --profile default
+reah-mcp logout --profile default
 ```
 
 Status reports local credential presence, access-token expiry and the public
@@ -103,9 +118,11 @@ directs you to disconnect the app in Reah Settings.
 The default server is `https://platform.stg.reah.com/mcp`. Use matching `--server`
 and `--profile` arguments for every command and the host configuration. Profiles
 isolate clients, credentials and keys. Tokens and private keys live under the
-`Reah MCP Local` OS credential-store namespace. `~/.reah-mcp` contains only empty
-coordination files and transient locks; it contains no credentials. The program
-does not read Codex's MCP credential store or invoke the macOS `security` CLI.
+`Reah MCP Go` OS credential-store namespace. `~/.reah-mcp-go` contains only
+coordination files and locks, never credentials. The program does not read
+Codex's MCP credential store. The Go and npm clients intentionally use separate
+vaults and locks: when switching to Go, disconnect the old connection in Reah
+Settings and log in once with Go. Do not copy tokens or device private keys.
 
 ## Signing boundary
 
@@ -114,10 +131,10 @@ key in the OS vault. Ordinary login remains read-only. To opt into credential
 preparation on a server that advertises support:
 
 ```sh
-node dist/client/cli.js login --enroll-key --profile default
-node dist/client/cli.js status --profile default
+reah-mcp login --enroll-key --profile default
+reah-mcp status --profile default
 # Resume after an interrupted proof submission:
-node dist/client/cli.js enroll-key --profile default
+reah-mcp enroll-key --profile default
 ```
 
 The public key is fixed in the OAuth request before browser consent. Backend
@@ -187,8 +204,17 @@ intent signing, the two-stage execution protocol, signed provider requests,
 argument tampering, missing credentials and ambiguous outcomes. They do not access your OS vault or
 real financial data. A live staging login is a separate manual verification.
 
-Future npm releases should be installed at an explicitly pinned version. The
-hosted plugin must not be changed to an unpublished local executable.
+The hosted plugin must not be changed to an unpublished local executable.
+
+## Existing npm installations
+
+`@reahplatform/mcp` remains available for existing users. It is a separate
+implementation, not a runtime dependency of the Go program. It can still be
+built with `npm ci --ignore-scripts && npm run build` and run with
+`node dist/client/cli.js`. Use an explicitly pinned published version when
+installing through npm. [Lerna release instructions](releases.md) still apply to
+that package. Installing, building or releasing Go does not publish a new npm
+version or migrate its credentials automatically.
 
 ### Choosing a transfer source
 

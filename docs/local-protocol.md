@@ -41,6 +41,11 @@ Supported signing formats:
   and continue the original operation once. No arbitrary signing, automatic
   submission retries, or loops until settlement are provided.
 
+The Go adapter preserves the optional `business` discriminator for financial
+execution. It does not infer it from an approval ID. Both clients currently
+hide `approval-financial-v1`: those business intent formats require a separate
+reviewed adapter and are never downgraded to unsigned forwarding.
+
 Both formats obtain a live `reah_signing_context` matching the local key and
 entity before use. This helper is private, including on legacy gateways.
 Business tool names are bound into proofs but are not compiled into the client.

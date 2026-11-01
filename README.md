@@ -14,10 +14,15 @@ https://platform.stg.reah.com/mcp
 The Gateway runs the MCP service and executes predefined GraphQL reads through
 existing business resolvers. This repository distributes client configurations,
 installation instructions, an optional analysis skill, and an optional
-[local TypeScript client](docs/local-client.md). The hosted connection requires
+[local Go client](docs/local-client.md). The hosted connection requires
 no local runtime, Agent credential, or manually configured bearer token. The
 optional local client also supports explicitly authorized transfer and execution
 when the matching server features are enabled; see its signing boundary.
+
+The Go client can be built or installed without Node.js or npm. It implements
+the same stdio MCP, OAuth and local signing boundaries; the existing npm client
+remains available for compatibility. Go binaries are distributed through GitHub,
+independently of npm releases. See [local installation](docs/local-client.md).
 
 ## Connect
 
