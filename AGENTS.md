@@ -9,7 +9,7 @@
 - Run `make lint`, `make test`, and `make build` before opening or updating a pull
   request.
 - This repository distributes hosted MCP connection settings, portable skills,
-  and optional Go and TypeScript stdio clients. Prefer the Go binary for new local installations.
+  and an optional Go stdio client. Distribute the local client as a Go executable.
   The Gateway owns OAuth, entity authorization, predefined GraphQL execution,
   tool schemas, and financial normalization. The local client follows the authenticated Gateway catalog and versioned signing
   protocols without a business-tool name allowlist. Keep account/network selection

@@ -25,7 +25,7 @@ import (
 	_ "google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Extracted from the pinned Conductor descriptor in src/generated/approval_details_pb.ts.
+// Pinned Conductor approval schema; see docs/signing-schema.md for provenance.
 //
 //go:embed approval.descriptor.bin
 var approvalDescriptor []byte

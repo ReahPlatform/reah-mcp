@@ -42,7 +42,7 @@ Supported signing formats:
   submission retries, or loops until settlement are provided.
 
 The Go adapter preserves the optional `business` discriminator for financial
-execution. It does not infer it from an approval ID. Both clients currently
+execution. It does not infer it from an approval ID. The Go client currently
 hide `approval-financial-v1`: those business intent formats require a separate
 reviewed adapter and are never downgraded to unsigned forwarding.
 

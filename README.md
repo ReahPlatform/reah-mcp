@@ -19,10 +19,10 @@ no local runtime, Agent credential, or manually configured bearer token. The
 optional local client also supports explicitly authorized transfer and execution
 when the matching server features are enabled; see its signing boundary.
 
-The Go client can be built or installed without Node.js or npm. It implements
-the same stdio MCP, OAuth and local signing boundaries; the existing npm client
-remains available for compatibility. Go binaries are distributed through GitHub,
-independently of npm releases. See [local installation](docs/local-client.md).
+The local client is written in Go and distributed as a standalone executable.
+It handles stdio MCP, OAuth, secure credential storage and local signing.
+Build from source or use a published GitHub binary release; no Node.js or npm
+runtime is required. See [local installation](docs/local-client.md).
 
 ## Connect
 
@@ -168,7 +168,7 @@ format using the [current contract](docs/data-contract.md).
 
 ## Validate and package
 
-Maintainers need Python 3.12+ and Make:
+Maintainers need Go 1.25+, Python 3.12+ and Make:
 
 ```sh
 make lint
@@ -176,9 +176,10 @@ make test
 make build
 ```
 
-Checks validate manifests, staging URLs, credential-free configuration, skill
-links, and the Codex plugin mirror. Tests exercise rejected configurations and
-archive contents. Build writes `dist/reah-0.3.1.zip` with documentation,
+Checks cover the Go client, manifests, staging URLs, credential-free configuration,
+skill links, and the Codex plugin mirror. Tests exercise OAuth, local signing,
+MCP transport, rejected configurations and archive contents. Build writes the
+local executable to `bin/reah-mcp` and `dist/reah-0.3.1.zip` with documentation,
 manifests, and the analysis skill, resolving the Codex mirror's symlinks into
 portable files.
 It does not build or deploy a server. Runtime authentication, permissions, and

@@ -1,6 +1,6 @@
 # Local MCP client
 
-The recommended local client is a standalone Go executable. It serves Reah's
+The local client is a standalone Go executable. It serves Reah's
 remote catalog over stdio and keeps OAuth tokens and the P-256 private key in
 the operating system credential store. Running it does not require Node.js,
 npm, or an npm account. The hosted read-only connection still requires no local
@@ -15,7 +15,7 @@ go build -trimpath -o bin/reah-mcp ./cmd/reah-mcp
 ./bin/reah-mcp --help
 ```
 
-After these changes are on `main`, users with repository access can install:
+Users with repository access can install from `main`:
 
 ```sh
 GOPRIVATE=github.com/ReahPlatform/reah-mcp go install github.com/ReahPlatform/reah-mcp/cmd/reah-mcp@main
@@ -120,9 +120,9 @@ and `--profile` arguments for every command and the host configuration. Profiles
 isolate clients, credentials and keys. Tokens and private keys live under the
 `Reah MCP Go` OS credential-store namespace. `~/.reah-mcp-go` contains only
 coordination files and locks, never credentials. The program does not read
-Codex's MCP credential store. The Go and npm clients intentionally use separate
-vaults and locks: when switching to Go, disconnect the old connection in Reah
-Settings and log in once with Go. Do not copy tokens or device private keys.
+Codex's MCP credential store. If migrating from the retired npm client, disconnect
+the old connection in Reah Settings and log in once with Go. The old and new
+clients use separate vaults and locks. Do not copy tokens or device private keys.
 
 ## Signing boundary
 
@@ -178,9 +178,11 @@ After registration, the local client exposes:
 The model never supplies signatures, private keys or provider request bodies.
 The program signs an exact connection/entity/operation/arguments proof and a
 Web-compatible protobuf transfer intent. Execution additionally verifies the
-pinned environment-specific Hodor public key. The protobuf source is the
-canonical Conductor `approval_details.proto`, using the generated artifact shared
-with Reah Web; its generated header records the schema path and generator.
+pinned environment-specific Hodor public key. The protobuf schema is pinned from
+Conductor `approval_details.proto` and
+embedded in the executable. Its provenance and the Web-compatible wire fixture
+are documented in [the signing fixtures](signing-schema.md).
+Building and validating the signer does not require a TypeScript generator.
 
 Deploy matching Hodor, Backend and Gateway contracts and migrations before
 enabling their separate enrollment, provider-registration and transfer-execution
@@ -206,17 +208,7 @@ real financial data. A live staging login is a separate manual verification.
 
 The hosted plugin must not be changed to an unpublished local executable.
 
-## Existing npm installations
-
-`@reahplatform/mcp` remains available for existing users. It is a separate
-implementation, not a runtime dependency of the Go program. It can still be
-built with `npm ci --ignore-scripts && npm run build` and run with
-`node dist/client/cli.js`. Use an explicitly pinned published version when
-installing through npm. [Lerna release instructions](releases.md) still apply to
-that package. Installing, building or releasing Go does not publish a new npm
-version or migrate its credentials automatically.
-
-### Choosing a transfer source
+## Choosing a transfer source
 
 After credential registration, use `reah_list_entities` and `reah_list_wallets`
 to select the business, wallet, blockchain account and instrument account.
@@ -229,7 +221,7 @@ signable through this discovery flow; balances and gas are checked when the
 transfer is prepared. Call `reah_transfer`, then `reah_execution` for its original
 approval ID once the existing approval policy is satisfied.
 
-### Network and gas selection
+## Network and gas selection
 
 Use `reah_list_wallets` to select the exact wallet asset and network. If
 multiple networks match and the user did not select one, ask; an EVM address
