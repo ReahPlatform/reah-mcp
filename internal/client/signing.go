@@ -46,10 +46,11 @@ type SigningContext struct {
 	ConnectionID string `json:"connectionId"`
 	Resource     string `json:"resource"`
 	Binding      struct {
-		EntityID  string `json:"entityId"`
-		PublicKey string `json:"publicKey"`
-		SuborgID  string `json:"suborgId"`
-		ExpiresAt string `json:"expiresAt"`
+		EntityID      string `json:"entityId"`
+		PublicKey     string `json:"publicKey"`
+		SuborgID      string `json:"suborgId"`
+		ExpiresAt     string `json:"expiresAt"`
+		PolicyProfile string `json:"policyProfile"`
 	} `json:"binding"`
 }
 

@@ -30,6 +30,7 @@ type Session struct {
 	DeviceKey                     DeviceKey `json:"deviceKey"`
 	Tokens                        *Tokens   `json:"tokens,omitempty"`
 	CredentialEnrollmentRequested bool      `json:"credentialEnrollmentRequested,omitempty"`
+	CredentialPolicyProfile       string    `json:"credentialPolicyProfile,omitempty"`
 	Enrollment                    *Receipt  `json:"enrollment,omitempty"`
 	PendingRevocation             string    `json:"pendingRevocation,omitempty"`
 }

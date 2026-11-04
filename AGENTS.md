@@ -22,6 +22,6 @@
   Never package credentials, bearer headers, fixed entity IDs, or login sessions.
 - Keep the hosted plugin read-only. Document only tools, fields, units, and arguments verified
   against the Gateway catalog. Its live tool schemas are authoritative; do not
-  introduce arbitrary GraphQL, field selections, or generic signing. The current server financial catalog is limited to reah_transfer and reah_execution;
+  introduce arbitrary GraphQL, field selections, or generic signing. The local financial adapters cover wallet transfer, verified execution, and EVM wallet crypto-convert v4 intents (exact-input/minimum-output); unsupported financial shapes remain closed;
   new tools may reuse a supported signing protocol without a client name allowlist. The unsigned reah_estimate_transfer preparation tool may initialize an empty Gas Station through the existing Web resolver; it must not be advertised as read-only.
 - Keep the analysis skill general. Put tool reference details in documentation.

@@ -60,7 +60,13 @@ func parseEnrollment(d document, c Config, s *Session) (*Receipt, string, error)
 			return nil, "", errEnrollment
 		}
 		var p document
-		if json.Unmarshal([]byte(payload), &p) != nil || !exactFields(p, "purpose", "resource", "clientId", "connectionId", "userId", "publicKey", "nonce", "enrollmentExpiresAt", "credentialExpiresAt", "targets") || p["purpose"] != "reah.mcp.credential-possession.v1" || p["resource"] != c.Server || p["clientId"] != s.ClientID || p["connectionId"] != id || !validUUID(stringAt(p, "userId")) || p["publicKey"] != s.DeviceKey.PublicKey {
+		fields := []string{"purpose", "resource", "clientId", "connectionId", "userId", "publicKey", "nonce", "enrollmentExpiresAt", "credentialExpiresAt", "targets"}
+		if s.CredentialPolicyProfile == "financial-operations-v1" {
+			fields = append(fields, "policyProfile")
+		} else if s.CredentialPolicyProfile != "" && s.CredentialPolicyProfile != "wallet-transfer-v1" {
+			return nil, "", errEnrollment
+		}
+		if json.Unmarshal([]byte(payload), &p) != nil || !exactFields(p, fields...) || (s.CredentialPolicyProfile == "financial-operations-v1" && p["policyProfile"] != s.CredentialPolicyProfile) || p["purpose"] != "reah.mcp.credential-possession.v1" || p["resource"] != c.Server || p["clientId"] != s.ClientID || p["connectionId"] != id || !validUUID(stringAt(p, "userId")) || p["publicKey"] != s.DeviceKey.PublicKey {
 			return nil, "", errEnrollment
 		}
 		nonce := stringAt(p, "nonce")
@@ -96,7 +102,13 @@ func (o *OAuth) prepareKey(ctx context.Context, s *Session) error {
 	if !s.CredentialEnrollmentRequested || s.Tokens == nil {
 		return errors.New("start a new login with --enroll-key before registering a signing credential")
 	}
-	d, e := o.request(ctx, "/mcp/credentials/prepare", document{}, s.Tokens.AccessToken)
+	input := document{}
+	if s.CredentialPolicyProfile == "financial-operations-v1" {
+		input["policyProfile"] = s.CredentialPolicyProfile
+	} else if s.CredentialPolicyProfile != "" && s.CredentialPolicyProfile != "wallet-transfer-v1" {
+		return errEnrollment
+	}
+	d, e := o.request(ctx, "/mcp/credentials/prepare", input, s.Tokens.AccessToken)
 	if e != nil {
 		return e
 	}

@@ -80,8 +80,10 @@ local protocol through tool `_meta`. Unknown protocol versions are hidden rather
 than being forwarded unsigned. The supported signing formats are wallet transfer intents (`approval-send-v2`)
 and verified execution continuations (`turnkey-execution-v1`). The Go adapter
 also preserves the optional financial `business` discriminator on execution.
-Other intent formats, including `approval-financial-v1`, remain hidden until a
-reviewed signing adapter is implemented. A new tool using an already supported
+The `approval-financial-v1` adapter additionally supports EVM wallet swaps and
+cross-chain crypto converts using v4 intents, in exact-input or minimum-output
+mode. Unsupported bank/Points/Smart Balance/scheduled/exact-output shapes remain
+closed. A new tool using an already supported
 format does not require a local release.
 
 The local client retains OAuth, OS credential storage, exact intent construction,
@@ -174,6 +176,24 @@ After registration, the local client exposes:
   and the original `approvalId`. The local program verifies Hodor's signed
   request, signs its exact Turnkey body and submits the signature continuation.
   A successful request is not proof of chain settlement.
+
+For wallet swaps and crypto converts, create a separate explicit financial grant:
+
+```sh
+reah-mcp login --enroll-key --policy-profile financial-operations-v1 --profile convert
+```
+
+The server must support explicit profile enrollment, and an owner must review
+and register this new credential. A wallet-only credential cannot convert.
+Follow the authenticated conversion schema, including its local-only
+`convertContext`, and obtain a fresh quote, principal balance and the selected
+payer's gas balance before submitting. Amounts and minimum receive are strings in
+standard asset units; do not reuse transfer minor-unit amounts. Minimum-output
+binds the maximum source budget and the target receipt floor. Retain the original
+request and approval identities, follow normal approval policy, then execute with
+`business: crypto_convert`. Request success does not prove settlement; reconcile
+the original approval and actual transactions. See [the local protocol](local-protocol.md)
+for exact context fields and supported scope.
 
 The model never supplies signatures, private keys or provider request bodies.
 The program signs an exact connection/entity/operation/arguments proof and a
