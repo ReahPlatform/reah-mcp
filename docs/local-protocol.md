@@ -90,3 +90,48 @@ preparation tools; upgrade the server and refresh `tools/list` or reconnect.
 Adding a public tool that reuses a supported format requires only a Gateway
 catalog change. New cryptographic formats or security/credential behavior still
 require updating the local program.
+
+
+### Internal Banking quote adapter
+
+An authenticated `approval-financial-v1` schema whose only business fields are
+required `entityId`, `quoteId` and `requestId` receives `bankTransferContext`.
+Tool names are not used to select this adapter. The context requires:
+
+- `approvalDetailsJson`, `expiresAt`: the selected quote's exact frozen protobuf
+  JSON and RFC3339 expiry. Unknown or duplicate protobuf fields fail closed.
+- `sourceBankingAccountId`, `targetBankingAccountId`, `fromAddress`, `toAddress`,
+  `walletId`, `networkId`, `instrumentId`, `asset`, `decimals`: quoted UUID
+  identities and independently verified local Banking settlement metadata. The
+  CAIP-19 ERC20 `asset` and precision remain local; they are absent from the
+  signed quote and are never inserted into it. The custody `walletId` comes
+  from the frozen quote and is checked against the source account by Ledger.
+- `amountCents`, `amountAtomic`, `gasFeeCents`, `totalDebitCents`: exact quote
+  terms. Amounts are integer strings; `decimals` is an integer. Source principal
+  and debit are equal for Gas Station gas. Atomic principal equals USD cents
+  multiplied by `10^(decimals-2)` under the internal USD settlement contract.
+
+The accepted frozen details contain only Send v1, exactly one Banking sender
+and one distinct Banking recipient, matching addresses/instrument/principal,
+and Gas Station gas with no Banking payer ID or fee output. Every populated
+field outside this closed contract is rejected. The complete parsed protobuf
+is signed unchanged with `requestId` as intent nonce. Context stays local; the
+operation proof binds the upstream `entityId`, `quoteId`, `requestId` and exact
+request signature. A populated `asset` in the frozen Send v1 quote is rejected
+as a different contract. Execution requires a compatible authenticated Gateway
+catalog advertising `bank_internal_transfer` and Hodor's private exact-request
+binding acknowledgment before Gateway returns the signing challenge. The client
+verifies the authenticated exact provider body and preserves the original
+business, approval and request IDs through the existing execution continuation.
+Hodor rechecks live financial credentials, the exact stamp, signed Conductor
+authorization and a fixed approval journal before custody submission and receipt
+replay. Unknown outcomes must be reconciled without replacement or automatic
+retry.
+
+This bank path trusts Ledger's transaction semantics as Web does. It neither
+changes existing Ledger quotes nor claims independent constructed-transaction
+comparison or original-attempt binding. Wallet and convert guards remain
+separate. Client support does not establish deployment, actual execution or
+settlement. External fiat/USD payouts and bank-paid internal gas are unsupported.
+Schemas, mappings and preparation stay local in the client; no remote templates
+or server-preparation RPC are used.

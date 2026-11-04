@@ -31,3 +31,20 @@ minimum-output v4 wallet conversion, fixed synthetic identities, nonce and
 timestamps. `TestConvertWebWireFixtures` verifies byte-for-byte compatibility,
 including the source/destination CAIP-19 assets, addresses, funding bucket, gas
 payer and receipt floor. The pinned descriptor is unchanged.
+
+
+`testdata/bank-internal-v1.base64` was independently generated with the existing
+Reah Web approval protobuf schema and `@bufbuild/protobuf` 2.10.2 (`fromJson`,
+`create`, `toBinary`, `timestampFromDate`). It follows
+`packages/signature/approval/bankingInternalTransferIntent.ts`: decode the complete
+frozen Send v1 details and sign them unchanged. The synthetic fixture binds a
+10 USD Banking transfer (1000 cents, 10000000 settlement atomic units at six
+decimals), existing UUID instrument/network identities, distinct Banking accounts, Gas Station
+attribution and fixed intent identity/timestamps. `TestBankTransferWebWireFixture`
+compares deterministic bytes and verifies the signature. The pinned descriptor
+is unchanged. This existing-Ledger fixture intentionally has no `asset`; local
+CAIP-19 settlement context is never inserted into signed details. It verifies
+approval intent compatibility. Bank execution separately requires a compatible
+Gateway/Hodor private exact-request binding and retains the existing Web trust
+boundary for Ledger transaction semantics; the fixture does not prove deployment,
+execution or settlement.
