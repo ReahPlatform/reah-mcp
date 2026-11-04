@@ -32,7 +32,7 @@ func TestExecutionMultipleVerifiedRounds(t *testing.T) {
 		bytes, _ := hex.DecodeString(sig)
 		return document{"requestId": fmt.Sprint(n), "requestPayload": string(body), "signature": base64.StdEncoding.EncodeToString(bytes)}
 	}
-	for _, business := range []string{"crypto_convert"} {
+	for _, business := range []string{"crypto_convert", "bank_internal_transfer"} {
 		for _, scenario := range []string{"complete", "repeated", "limit", "unknown"} {
 			t.Run(business+"/"+scenario, func(t *testing.T) {
 				calls := 0
@@ -80,20 +80,5 @@ func TestExecutionMultipleVerifiedRounds(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-// Existing Ledger Banking internal execution is unbound raw signing. Approval
-// support must never turn that route into an implicit execution capability.
-func TestBankTransferExecutionBlockedBeforeRemoteCall(t *testing.T) {
-	calls := 0
-	call := func(context.Context, string, document) (*mcp.CallToolResult, error) {
-		calls++
-		t.Fatal("unsupported bank execution reached remote signing/context")
-		return nil, nil
-	}
-	_, err := callSigned(context.Background(), "renamed-execution", "turnkey-execution-v1", document{"entityId": testID, "approvalId": testOtherID, "business": "bank_internal_transfer"}, DeviceKey{}, DefaultServer, call, "")
-	if err == nil || !strings.Contains(err.Error(), "unsupported financial execution business") || calls != 0 {
-		t.Fatalf("bank execution was admitted: calls=%d error=%v", calls, err)
 	}
 }

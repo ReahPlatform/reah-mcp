@@ -44,4 +44,7 @@ attribution and fixed intent identity/timestamps. `TestBankTransferWebWireFixtur
 compares deterministic bytes and verifies the signature. The pinned descriptor
 is unchanged. This existing-Ledger fixture intentionally has no `asset`; local
 CAIP-19 settlement context is never inserted into signed details. It verifies
-approval creation only, not MCP execution or settlement.
+approval intent compatibility. Bank execution separately requires a compatible
+Gateway/Hodor private exact-request binding and retains the existing Web trust
+boundary for Ledger transaction semantics; the fixture does not prove deployment,
+execution or settlement.

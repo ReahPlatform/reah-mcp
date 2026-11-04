@@ -118,10 +118,20 @@ field outside this closed contract is rejected. The complete parsed protobuf
 is signed unchanged with `requestId` as intent nonce. Context stays local; the
 operation proof binds the upstream `entityId`, `quoteId`, `requestId` and exact
 request signature. A populated `asset` in the frozen Send v1 quote is rejected
-as a different contract. This is approval-only support for existing Ledger;
-Banking internal execution is blocked before any remote context or signing
-call because Ledger retains its unbound raw-signing route. Continue through
-the existing human execution flow and never infer settlement from approval
-status. External fiat/USD payouts and bank-paid internal gas are unsupported.
+as a different contract. Execution requires a compatible authenticated Gateway
+catalog advertising `bank_internal_transfer` and Hodor's private exact-request
+binding acknowledgment before Gateway returns the signing challenge. The client
+verifies the authenticated exact provider body and preserves the original
+business, approval and request IDs through the existing execution continuation.
+Hodor rechecks live financial credentials, the exact stamp, signed Conductor
+authorization and a fixed approval journal before custody submission and receipt
+replay. Unknown outcomes must be reconciled without replacement or automatic
+retry.
+
+This bank path trusts Ledger's transaction semantics as Web does. It neither
+changes existing Ledger quotes nor claims independent constructed-transaction
+comparison or original-attempt binding. Wallet and convert guards remain
+separate. Client support does not establish deployment, actual execution or
+settlement. External fiat/USD payouts and bank-paid internal gas are unsupported.
 Schemas, mappings and preparation stay local in the client; no remote templates
 or server-preparation RPC are used.

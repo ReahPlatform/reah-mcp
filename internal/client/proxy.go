@@ -96,7 +96,7 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 		copy := *t
 		if p.Signing == "approval-financial-v1" && bankTransferSchema(schema) {
 			addBankTransferContext(schema)
-			copy.Description += " Local adapter creates approvals only for existing Banking internal Send v1 quotes paid by Gas Station. Supply bankTransferContext from the exact fresh quote and independently verified owned ERC20 Banking settlement metadata. The signed quote retains its existing UUID identities without an asset field; local metadata is not added to the signature. Preserve requestId and frozen approvalDetailsJson. Requires explicit financial-operations-v1 registration. Check actual available Banking funds and Gas Station balance separately. Bank internal execution is unsupported by this client and existing Ledger custody path; continue through the existing human flow. This tool never approves, executes or proves settlement."
+			copy.Description += " Local adapter supports existing Banking internal Send v1 quotes paid by Gas Station. Supply bankTransferContext from the exact fresh quote and independently verified owned ERC20 Banking settlement metadata. The signed quote retains its existing UUID identities without an asset field; local metadata is not added to the signature. Preserve requestId and frozen approvalDetailsJson. Requires explicit financial-operations-v1 registration. Check actual available Banking funds and Gas Station balance separately. Bank internal execution requires a compatible Gateway advertising that business and Hodor acknowledging its private exact-request binding. This Web-equivalent bank route trusts Ledger transaction semantics; wallet and convert construction checks remain separate. Approval creation never approves, executes or proves settlement."
 		} else if p.Signing == "approval-financial-v1" {
 			addConvertContext(schema)
 			copy.Description += " Local adapter supports EVM wallet crypto conversion (same-chain swap or cross-chain convert), exact-input and minimum-output only, without Points. Supply convertContext from independently verified account/network/instrument reads, explicit destinationAddress, authoritative asset decimals and CAIP-19 identities. Context is local-only and is bound into a v4 approval intent. Preserve its stable requestId. Obtain a fresh quote and check principal plus selected gas balance before submitting; use a positive minimumReceive at destination precision. This requires explicit financial-operations-v1 registration; wallet-only credentials cannot convert."
@@ -232,11 +232,28 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 	if p.Mode != "signed" {
 		return r.invoke(ctx, name, args)
 	}
+	if p.Signing == "turnkey-execution-v1" && args["business"] == "bank_internal_transfer" && !advertisesBankExecution(tool) {
+		return nil, errors.New("Banking execution is unavailable in the authenticated Gateway catalog; use the existing human flow")
+	}
 	key, e := r.OAuth.signingKey(ctx)
 	if e != nil {
 		return nil, e
 	}
 	return callSigned(ctx, name, p.Signing, args, key, r.OAuth.Config.Server, r.invoke, "")
+}
+
+// Older catalogs cannot opt a Banking approval into an unbound custody route.
+// The compatible Gateway additionally requires Hodor's private binding acknowledgment.
+func advertisesBankExecution(tool *mcp.Tool) bool {
+	b, err := json.Marshal(tool.InputSchema)
+	var schema struct {
+		Properties struct {
+			Business struct {
+				Enum []string `json:"enum"`
+			} `json:"business"`
+		} `json:"properties"`
+	}
+	return err == nil && json.Unmarshal(b, &schema) == nil && slices.Contains(schema.Properties.Business.Enum, "bank_internal_transfer")
 }
 
 func callSigned(ctx context.Context, name, format string, args document, key DeviceKey, server string, call invoke, verificationKey string) (*mcp.CallToolResult, error) {
@@ -252,7 +269,7 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		if !validUUID(stringAt(args, "approvalId")) {
 			return nil, errors.New("execution requires the original approvalId")
 		}
-		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal"}, b) {
+		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal", "bank_internal_transfer"}, b) {
 			return nil, errors.New("unsupported financial execution business")
 		}
 	} else if format != "approval-send-v2" && format != "approval-financial-v1" {

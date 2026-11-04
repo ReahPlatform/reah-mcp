@@ -82,10 +82,10 @@ and verified execution continuations (`turnkey-execution-v1`). The Go adapter
 also preserves the optional financial `business` discriminator on execution.
 The `approval-financial-v1` adapter additionally supports EVM wallet swaps and
 cross-chain crypto converts using v4 intents, in exact-input or minimum-output
-mode, plus approval creation from existing asset-absent Banking internal Send v1
-quotes paid by Gas Station. Banking internal execution, external bank payouts,
-bank-paid internal gas, Points, Smart Balance, scheduled and exact-output shapes
-remain closed. A new tool using an already supported
+mode, plus existing asset-absent Banking internal Send v1 quotes paid by Gas
+Station and Web-equivalent bank execution through compatible Gateway/Hodor
+servers. External bank payouts, bank-paid internal gas, Points, Smart Balance,
+scheduled and exact-output shapes remain closed. A new tool using an already supported
 format does not require a local release.
 
 The local client retains OAuth, OS credential storage, exact intent construction,
@@ -212,13 +212,23 @@ approval window. No bank-paid gas split, external payout or arbitrary protobuf
 family is signed. Retain stable `requestId`, `quoteId` and original approval
 identities and reconcile that same operation after an unknown outcome.
 
-Banking internal execution is unsupported because existing Ledger uses an
-unbound raw-signing path. The client refuses `business: bank_internal_transfer`
-before any remote context or signing call; use the existing human execution
-flow. Approval creation or completion never proves bank settlement. This
-approval-only adapter requires no Ledger changes. Schema mappings and
-preparation are stored and executed in the client, without remote templates
-or a server-preparation RPC.
+Banking internal execution requires a compatible authenticated Gateway catalog
+that advertises `business: bank_internal_transfer`. Gateway must obtain Hodor's
+private acknowledgment binding the original pending raw request to the original
+signed intent and approval before exposing its signing challenge. The client
+verifies the server-authenticated exact body and signs it through the existing
+execution protocol, retaining the original business, approval and request IDs.
+Hodor checks the exact stamp, live financial key, Conductor authorization and
+fixed approval journal before execution. Unknown outcomes require reconciliation
+of that original operation, without automatic retries or replacements.
+
+This bank path trusts Ledger's transaction semantics at the same boundary as
+Web; it does not claim the independent constructed-transaction comparison used
+for supported wallet and convert paths or an independent original-attempt
+binding. No Ledger or quote changes are required. Server deployment and an
+actual completed bank E2E are separate prerequisites; client support or approval
+completion never proves settlement. Schema mappings and preparation are stored
+and executed in the client, without remote templates or a server-preparation RPC.
 
 The model never supplies signatures, private keys or provider request bodies.
 The program signs an exact connection/entity/operation/arguments proof and a
