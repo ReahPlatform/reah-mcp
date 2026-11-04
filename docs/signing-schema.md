@@ -31,3 +31,15 @@ minimum-output v4 wallet conversion, fixed synthetic identities, nonce and
 timestamps. `TestConvertWebWireFixtures` verifies byte-for-byte compatibility,
 including the source/destination CAIP-19 assets, addresses, funding bucket, gas
 payer and receipt floor. The pinned descriptor is unchanged.
+
+
+`testdata/bank-internal-v1.base64` was independently generated with the existing
+Reah Web approval protobuf schema and `@bufbuild/protobuf` 2.10.2 (`fromJson`,
+`create`, `toBinary`, `timestampFromDate`). It follows
+`packages/signature/approval/bankingInternalTransferIntent.ts`: decode the complete
+frozen Send v1 details and sign them unchanged. The synthetic fixture binds a
+10 USD Banking transfer (1000 cents, 10000000 settlement atomic units at six
+decimals), the CAIP-19 ERC20 asset, distinct Banking identities, Gas Station
+attribution and fixed intent identity/timestamps. `TestBankTransferWebWireFixture`
+compares deterministic bytes and verifies the signature. The pinned descriptor
+is unchanged; old bank quotes lacking the asset remain unsupported.

@@ -74,7 +74,7 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			out = append(out, t)
 			continue
 		}
-		if p.Signing == "approval-financial-v1" && !convertSchema(schema) {
+		if p.Signing == "approval-financial-v1" && !convertSchema(schema) && !bankTransferSchema(schema) {
 			continue
 		}
 		if t.Annotations == nil || t.Annotations.ReadOnlyHint {
@@ -94,7 +94,10 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			schema["required"] = kept
 		}
 		copy := *t
-		if p.Signing == "approval-financial-v1" {
+		if p.Signing == "approval-financial-v1" && bankTransferSchema(schema) {
+			addBankTransferContext(schema)
+			copy.Description += " Local adapter supports only single ERC20 Banking internal transfers paid by Gas Station. Supply bankTransferContext from the exact fresh quote and independently verified owned Banking metadata. Preserve requestId and frozen approvalDetailsJson; old quotes without a CAIP-19 asset, bank-paid gas and external payouts are unsupported. Requires explicit financial-operations-v1 registration. Check actual available Banking funds and Gas Station balance separately. Approval creation does not execute or prove settlement."
+		} else if p.Signing == "approval-financial-v1" {
 			addConvertContext(schema)
 			copy.Description += " Local adapter supports EVM wallet crypto conversion (same-chain swap or cross-chain convert), exact-input and minimum-output only, without Points. Supply convertContext from independently verified account/network/instrument reads, explicit destinationAddress, authoritative asset decimals and CAIP-19 identities. Context is local-only and is bound into a v4 approval intent. Preserve its stable requestId. Obtain a fresh quote and check principal plus selected gas balance before submitting; use a positive minimumReceive at destination precision. This requires explicit financial-operations-v1 registration; wallet-only credentials cannot convert."
 		}
@@ -249,7 +252,7 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		if !validUUID(stringAt(args, "approvalId")) {
 			return nil, errors.New("execution requires the original approvalId")
 		}
-		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal"}, b) {
+		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal", "bank_internal_transfer"}, b) {
 			return nil, errors.New("unsupported financial execution business")
 		}
 	} else if format != "approval-send-v2" && format != "approval-financial-v1" {
@@ -280,7 +283,13 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		return out, nil
 	}
 	if format == "approval-financial-v1" {
-		intent, body, e := convertIntent(key, c, args, time.Now())
+		var intent, body document
+		var e error
+		if args["bankTransferContext"] != nil {
+			intent, body, e = bankTransferIntent(key, c, args, time.Now())
+		} else {
+			intent, body, e = convertIntent(key, c, args, time.Now())
+		}
 		if e != nil {
 			return nil, e
 		}

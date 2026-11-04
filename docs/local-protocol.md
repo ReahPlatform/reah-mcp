@@ -90,3 +90,32 @@ preparation tools; upgrade the server and refresh `tools/list` or reconnect.
 Adding a public tool that reuses a supported format requires only a Gateway
 catalog change. New cryptographic formats or security/credential behavior still
 require updating the local program.
+
+
+### Internal Banking quote adapter
+
+An authenticated `approval-financial-v1` schema whose only business fields are
+required `entityId`, `quoteId` and `requestId` receives `bankTransferContext`.
+Tool names are not used to select this adapter. The context requires:
+
+- `approvalDetailsJson`, `expiresAt`: the selected quote's exact frozen protobuf
+  JSON and RFC3339 expiry. Unknown or duplicate protobuf fields fail closed.
+- `sourceBankingAccountId`, `targetBankingAccountId`, `fromAddress`, `toAddress`,
+  `walletId`, `networkId`, `instrumentId`, `asset`, `decimals`: exact quote
+  identities checked against owned Banking settlement metadata and CAIP-19
+  ERC20 identity. The custody `walletId` comes from the frozen quote; Ledger
+  independently checks it against the source Banking account before execution.
+- `amountCents`, `amountAtomic`, `gasFeeCents`, `totalDebitCents`: exact quote
+  terms. Amounts are integer strings; `decimals` is an integer. Source principal
+  and debit are equal for Gas Station gas. Atomic principal equals USD cents
+  multiplied by `10^(decimals-2)` under the internal USD settlement contract.
+
+The accepted frozen details contain only Send v1, exactly one Banking sender
+and one distinct Banking recipient, matching addresses/instrument/principal,
+and Gas Station gas with no Banking payer ID or fee output. Every populated
+field outside this closed contract is rejected. The complete parsed protobuf
+is signed unchanged with `requestId` as intent nonce. Context stays local; the
+operation proof binds the upstream `entityId`, `quoteId`, `requestId` and exact
+request signature. Execution reuses verified continuations with the original
+`bank_internal_transfer` approval. This adapter does not authorize external
+fiat/USD payouts or bank-paid internal gas.

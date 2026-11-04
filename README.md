@@ -184,3 +184,10 @@ manifests, and the analysis skill, resolving the Codex mirror's symlinks into
 portable files.
 It does not build or deploy a server. Runtime authentication, permissions, and
 financial normalization tests belong to the Gateway and Backend services.
+
+
+The optional local Go client supports protected internal Banking transfer
+approvals paid by Gas Station using a separately registered financial credential.
+It validates and signs the selected frozen quote, then reuses verified execution
+continuations. External bank payouts and bank-paid internal gas remain outside
+this adapter. See [the local client guide](docs/local-client.md).

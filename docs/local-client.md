@@ -82,8 +82,9 @@ and verified execution continuations (`turnkey-execution-v1`). The Go adapter
 also preserves the optional financial `business` discriminator on execution.
 The `approval-financial-v1` adapter additionally supports EVM wallet swaps and
 cross-chain crypto converts using v4 intents, in exact-input or minimum-output
-mode. Unsupported bank/Points/Smart Balance/scheduled/exact-output shapes remain
-closed. A new tool using an already supported
+mode, plus frozen Banking internal Send v1 quotes with a CAIP-19 asset and
+Gas Station gas. External bank payouts, bank-paid internal gas, old unbound bank
+quotes, Points, Smart Balance, scheduled and exact-output shapes remain closed. A new tool using an already supported
 format does not require a local release.
 
 The local client retains OAuth, OS credential storage, exact intent construction,
@@ -177,7 +178,7 @@ After registration, the local client exposes:
   request, signs its exact Turnkey body and submits the signature continuation.
   A successful request is not proof of chain settlement.
 
-For wallet swaps and crypto converts, create a separate explicit financial grant:
+For wallet swaps, crypto converts and internal Banking transfers, create a separate explicit financial grant:
 
 ```sh
 reah-mcp login --enroll-key --policy-profile financial-operations-v1 --profile convert
@@ -194,6 +195,21 @@ request and approval identities, follow normal approval policy, then execute wit
 `business: crypto_convert`. Request success does not prove settlement; reconcile
 the original approval and actual transactions. See [the local protocol](local-protocol.md)
 for exact context fields and supported scope.
+
+For internal Banking transfers, obtain a fresh quote, both owned settlement
+identities, actual available source funds and the Gas Station balance first.
+Follow the live schema and supply its local-only `bankTransferContext`. The
+adapter signs the entire frozen `approvalDetailsJson`, checks both Banking IDs,
+addresses, asset, instrument/network/wallet identities, exact principal in USD
+cents and settlement atomic units, and Gas Station attribution. The internal
+quote contract uses 1:1 USD settlement; its authoritative instrument decimals
+control exact integer rescaling. The quote expiry gates submission; the
+admitted approval retains its normal approval window. No bank-paid gas split,
+external payout, arbitrary protobuf family or quote lacking `asset` is signed.
+Retain the stable `requestId`, `quoteId` and original approval, then use
+`business: bank_internal_transfer` only when the deployed Gateway supports
+this protected shape. Reconcile the same original operation after an unknown
+outcome; creating or completing an approval does not prove bank settlement.
 
 The model never supplies signatures, private keys or provider request bodies.
 The program signs an exact connection/entity/operation/arguments proof and a
