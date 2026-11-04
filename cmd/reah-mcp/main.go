@@ -37,12 +37,13 @@ func command() *cobra.Command {
 		return client.NewOAuth(c), nil
 	}
 	var enroll, noBrowser bool
+	var policyProfile string
 	login := &cobra.Command{Use: "login", Short: "Authorize this client in the browser", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o, e := makeOAuth()
 		if e != nil {
 			return e
 		}
-		e = o.Login(cmd.Context(), enroll, func(u string) error {
+		e = o.LoginWithPolicyProfile(cmd.Context(), enroll, policyProfile, func(u string) error {
 			fmt.Fprintln(cmd.ErrOrStderr(), "Open this URL to continue (do not share it):\n"+u)
 			if noBrowser {
 				return nil
@@ -54,6 +55,7 @@ func command() *cobra.Command {
 		}
 		return e
 	}}
+	login.Flags().StringVar(&policyProfile, "policy-profile", "wallet-transfer-v1", "Explicit signing policy: wallet-transfer-v1 or financial-operations-v1 (requires --enroll-key)")
 	login.Flags().BoolVar(&enroll, "enroll-key", false, "Request owner-confirmed signing credential registration")
 	login.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the authorization URL without launching a browser")
 	root.AddCommand(login)

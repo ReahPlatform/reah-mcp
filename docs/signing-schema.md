@@ -22,3 +22,12 @@ and 15.25 USDC in minor units, with no credentials. The Go test compares its
 encoded intent to this independently produced fixture. When the signing contract
 changes, review the upstream schema and update the descriptor, intent adapter
 and cross-implementation fixture together.
+
+`testdata/convert-v4.base64` and `testdata/convert-minimum-v4.base64` were
+independently generated with Reah Web's existing approval protobuf schema and
+`@bufbuild/protobuf` 2.10.2 (`create`, `toBinary`, `timestampFromDate`), following
+`packages/signature/approval/convertIntent.ts`. They cover exact-input and
+minimum-output v4 wallet conversion, fixed synthetic identities, nonce and
+timestamps. `TestConvertWebWireFixtures` verifies byte-for-byte compatibility,
+including the source/destination CAIP-19 assets, addresses, funding bucket, gas
+payer and receipt floor. The pinned descriptor is unchanged.

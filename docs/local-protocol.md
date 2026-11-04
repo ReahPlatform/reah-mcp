@@ -38,15 +38,42 @@ Supported signing formats:
 - `turnkey-execution-v1`: sign the operation proof and invoke the advertised tool.
   If the response requests signatures, validate the server signature over exact
   provider bytes, target organization, operation type and timestamp, then stamp
-  and continue the original operation once. No arbitrary signing, automatic
-  submission retries, or loops until settlement are provided.
+  and continue the original operation for at most eight verified rounds, with at
+  most 16 requests per round. Repeated request IDs stop for reconciliation. Every
+  round retains the original entity, approval and business. No arbitrary signing,
+  automatic submission retries, or loops until settlement are provided.
 
-The Go adapter preserves the optional `business` discriminator for financial
-execution. It does not infer it from an approval ID. The Go client currently
-hide `approval-financial-v1`: those business intent formats require a separate
-reviewed adapter and are never downgraded to unsigned forwarding.
+- `approval-financial-v1`: the supported input shape is wallet crypto conversion
+  through Web-compatible v4 intents. Both same-chain swaps and cross-chain EVM
+  converts support `EXACT_INPUT` and `MINIMUM_OUTPUT`. Bank, Points, Smart Balance,
+  scheduled and `EXACT_OUTPUT` intent families remain unsupported. Capability
+  selection uses the authenticated schema, not a business-tool name allowlist.
 
-Both formats obtain a live `reah_signing_context` matching the local key and
+The conversion schema adds a local-only `convertContext`: stable UUID `requestId`,
+`originNetworkId`, `destinationNetworkId`, `sourceAsset`, `destinationAsset`,
+`originTokenAddress`, `destinationTokenAddress`, `originAddress`, `sourceDecimals`
+and `destinationDecimals`. The Agent must obtain these explicit identities from
+verified reads; the proxy does not discover accounts or infer chains. Native
+assets require an explicit `slip44` identity and empty token address; ERC-20
+identities must match the explicit contract. The public `destinationAddress` is
+required. Amounts and the positive receipt floor must fit asset precision.
+Minimum-output requires `requestedTargetAmount` to equal `minimumReceive`.
+Context enters the signed intent but is removed from Gateway arguments. The
+operation proof binds the actual tool and every upstream argument, including
+that signed intent. The local adapter never accepts arbitrary payload bytes.
+
+Conversions require live `financial-operations-v1` credentials. Request one with
+`login --enroll-key --policy-profile financial-operations-v1`; this creates a new
+connection and requires explicit owner registration. The default stays
+`wallet-transfer-v1`. The selected financial profile must appear exactly in the
+frozen possession proof; a server lacking explicit profile enrollment fails
+closed. Existing wallet credentials are never silently expanded.
+
+The Go adapter preserves the optional `business` discriminator for execution;
+use `crypto_convert` for conversion approvals. It does not infer business from
+an approval ID.
+
+All formats obtain a live `reah_signing_context` matching the local key and
 entity before use. This helper is private, including on legacy gateways.
 Business tool names are bound into proofs but are not compiled into the client.
 

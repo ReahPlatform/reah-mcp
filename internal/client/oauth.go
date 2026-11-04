@@ -183,6 +183,14 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 }
 
 func (o *OAuth) Login(ctx context.Context, enroll bool, open func(string) error) error {
+	return o.LoginWithPolicyProfile(ctx, enroll, "wallet-transfer-v1", open)
+}
+
+// LoginWithPolicyProfile always creates new consent; it never upgrades a grant.
+func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile string, open func(string) error) error {
+	if profile != "wallet-transfer-v1" && profile != "financial-operations-v1" || !enroll && profile != "wallet-transfer-v1" {
+		return errors.New("use a supported policy profile with --enroll-key for financial signing")
+	}
 	page, e := o.discover(ctx, enroll)
 	if e != nil {
 		return e
@@ -215,6 +223,7 @@ func (o *OAuth) Login(ctx context.Context, enroll bool, open func(string) error)
 		s.Tokens = nil
 		s.Enrollment = nil
 		s.CredentialEnrollmentRequested = enroll
+		s.CredentialPolicyProfile = profile
 		s.PendingRevocation = old
 		if e = o.Store.Write(s); e != nil {
 			return e

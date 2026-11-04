@@ -34,7 +34,7 @@ func localProtocol(t *mcp.Tool) (protocol, bool) {
 	if p.Mode == "internal" || p.Mode == "proxy" {
 		return p, true
 	}
-	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "turnkey-execution-v1"}, p.Signing) {
+	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "approval-financial-v1", "turnkey-execution-v1"}, p.Signing) {
 		return p, true
 	}
 	return protocol{}, true
@@ -74,6 +74,9 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			out = append(out, t)
 			continue
 		}
+		if p.Signing == "approval-financial-v1" && !convertSchema(schema) {
+			continue
+		}
 		if t.Annotations == nil || t.Annotations.ReadOnlyHint {
 			continue
 		}
@@ -91,6 +94,10 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			schema["required"] = kept
 		}
 		copy := *t
+		if p.Signing == "approval-financial-v1" {
+			addConvertContext(schema)
+			copy.Description += " Local adapter supports EVM wallet crypto conversion (same-chain swap or cross-chain convert), exact-input and minimum-output only, without Points. Supply convertContext from independently verified account/network/instrument reads, explicit destinationAddress, authoritative asset decimals and CAIP-19 identities. Context is local-only and is bound into a v4 approval intent. Preserve its stable requestId. Obtain a fresh quote and check principal plus selected gas balance before submitting; use a positive minimumReceive at destination precision. This requires explicit financial-operations-v1 registration; wallet-only credentials cannot convert."
+		}
 		copy.InputSchema = schema
 		out = append(out, &copy)
 	}
@@ -245,7 +252,7 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal"}, b) {
 			return nil, errors.New("unsupported financial execution business")
 		}
-	} else if format != "approval-send-v2" {
+	} else if format != "approval-send-v2" && format != "approval-financial-v1" {
 		return nil, errors.New("unsupported local signing protocol")
 	}
 	contextResult, e := call(ctx, "reah_signing_context", document{"entityId": args["entityId"]})
@@ -272,6 +279,14 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		}
 		return out, nil
 	}
+	if format == "approval-financial-v1" {
+		intent, body, e := convertIntent(key, c, args, time.Now())
+		if e != nil {
+			return nil, e
+		}
+		body["requestSignature"] = intent
+		return submit(body)
+	}
 	if format == "approval-send-v2" {
 		intent, e := transferIntent(key, c, args, time.Now())
 		if e != nil {
@@ -281,47 +296,55 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		body["requestSignature"] = intent
 		return submit(body)
 	}
-	out, e := submit(args)
-	if e != nil || out.IsError {
-		return out, e
-	}
-	b, e := json.Marshal(out.StructuredContent)
-	var d document
-	if e != nil || json.Unmarshal(b, &d) != nil {
-		return nil, errors.New("invalid execution response; inspect the original approval")
-	}
-	requests, exists := d["requiresSignatures"]
-	if !exists {
-		return out, nil
-	}
-	items, ok := requests.([]any)
-	if !ok || len(items) > 16 {
-		return nil, errors.New("invalid execution signature list")
-	}
-	if len(items) == 0 {
-		return out, nil
-	}
-	signatures := []any{}
+	input := cloneDocument(args)
 	seen := map[string]bool{}
-	for _, item := range items {
-		v, ok := item.(map[string]any)
-		if !ok {
-			return nil, errors.New("invalid execution signature request")
+	for round := 0; round <= 8; round++ {
+		out, e := submit(input)
+		if e != nil || out.IsError {
+			return out, e
 		}
-		stamp, e := executionStamp(key, c, v, verificationKey)
-		if e != nil {
-			return nil, e
+		b, e := json.Marshal(out.StructuredContent)
+		var d document
+		if e != nil || json.Unmarshal(b, &d) != nil {
+			return nil, errors.New("invalid execution response; inspect the original approval")
 		}
-		id := stringAt(stamp, "requestId")
-		if seen[id] {
-			return nil, errors.New("duplicate execution signing request")
+		requests, exists := d["requiresSignatures"]
+		if !exists {
+			return out, nil
 		}
-		seen[id] = true
-		signatures = append(signatures, stamp)
+		items, ok := requests.([]any)
+		if !ok || len(items) > 16 {
+			return nil, errors.New("invalid execution signature list")
+		}
+		if len(items) == 0 {
+			return out, nil
+		}
+		if round == 8 {
+			return nil, errors.New("execution continuation limit reached; reconcile the original approval before continuing")
+		}
+		signatures := []any{}
+		for _, item := range items {
+			v, ok := item.(map[string]any)
+			if !ok {
+				return nil, errors.New("invalid execution signature request")
+			}
+			id := stringAt(v, "requestId")
+			if seen[id] {
+				return nil, errors.New("repeated execution signing request; reconcile the original approval")
+			}
+			stamp, e := executionStamp(key, c, v, verificationKey)
+			if e != nil {
+				return nil, e
+			}
+			seen[id] = true
+			signatures = append(signatures, stamp)
+		}
+		// Every continuation retains the original entity, approval and business.
+		// It never repeats a previous submission or polls until settlement.
+		input = cloneDocument(args)
+		input["signatures"] = signatures
 	}
-	continuation := cloneDocument(args)
-	continuation["signatures"] = signatures
-	return submit(continuation)
+	panic("unreachable execution continuation")
 }
 func cloneDocument(d document) document {
 	out := document{}
