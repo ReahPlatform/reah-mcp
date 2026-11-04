@@ -82,9 +82,10 @@ and verified execution continuations (`turnkey-execution-v1`). The Go adapter
 also preserves the optional financial `business` discriminator on execution.
 The `approval-financial-v1` adapter additionally supports EVM wallet swaps and
 cross-chain crypto converts using v4 intents, in exact-input or minimum-output
-mode, plus frozen Banking internal Send v1 quotes with a CAIP-19 asset and
-Gas Station gas. External bank payouts, bank-paid internal gas, old unbound bank
-quotes, Points, Smart Balance, scheduled and exact-output shapes remain closed. A new tool using an already supported
+mode, plus approval creation from existing asset-absent Banking internal Send v1
+quotes paid by Gas Station. Banking internal execution, external bank payouts,
+bank-paid internal gas, Points, Smart Balance, scheduled and exact-output shapes
+remain closed. A new tool using an already supported
 format does not require a local release.
 
 The local client retains OAuth, OS credential storage, exact intent construction,
@@ -199,17 +200,25 @@ for exact context fields and supported scope.
 For internal Banking transfers, obtain a fresh quote, both owned settlement
 identities, actual available source funds and the Gas Station balance first.
 Follow the live schema and supply its local-only `bankTransferContext`. The
-adapter signs the entire frozen `approvalDetailsJson`, checks both Banking IDs,
-addresses, asset, instrument/network/wallet identities, exact principal in USD
-cents and settlement atomic units, and Gas Station attribution. The internal
-quote contract uses 1:1 USD settlement; its authoritative instrument decimals
-control exact integer rescaling. The quote expiry gates submission; the
-admitted approval retains its normal approval window. No bank-paid gas split,
-external payout, arbitrary protobuf family or quote lacking `asset` is signed.
-Retain the stable `requestId`, `quoteId` and original approval, then use
-`business: bank_internal_transfer` only when the deployed Gateway supports
-this protected shape. Reconcile the same original operation after an unknown
-outcome; creating or completing an approval does not prove bank settlement.
+adapter creates an approval by signing the entire frozen `approvalDetailsJson`,
+checking both Banking IDs, addresses, instrument/network/wallet identities,
+exact principal in USD cents and settlement atomic units, and Gas Station
+attribution. Local CAIP-19 asset metadata and decimals help verify the selected
+ERC20 settlement and exact 1:1 USD rescaling; the existing signed quote itself
+uses UUID identities and contains no `asset`. The client never inserts local
+asset metadata into signed details and rejects a populated future asset field.
+The quote expiry gates submission; the admitted approval retains its normal
+approval window. No bank-paid gas split, external payout or arbitrary protobuf
+family is signed. Retain stable `requestId`, `quoteId` and original approval
+identities and reconcile that same operation after an unknown outcome.
+
+Banking internal execution is unsupported because existing Ledger uses an
+unbound raw-signing path. The client refuses `business: bank_internal_transfer`
+before any remote context or signing call; use the existing human execution
+flow. Approval creation or completion never proves bank settlement. This
+approval-only adapter requires no Ledger changes. Schema mappings and
+preparation are stored and executed in the client, without remote templates
+or a server-preparation RPC.
 
 The model never supplies signatures, private keys or provider request bodies.
 The program signs an exact connection/entity/operation/arguments proof and a

@@ -39,7 +39,9 @@ Reah Web approval protobuf schema and `@bufbuild/protobuf` 2.10.2 (`fromJson`,
 `packages/signature/approval/bankingInternalTransferIntent.ts`: decode the complete
 frozen Send v1 details and sign them unchanged. The synthetic fixture binds a
 10 USD Banking transfer (1000 cents, 10000000 settlement atomic units at six
-decimals), the CAIP-19 ERC20 asset, distinct Banking identities, Gas Station
+decimals), existing UUID instrument/network identities, distinct Banking accounts, Gas Station
 attribution and fixed intent identity/timestamps. `TestBankTransferWebWireFixture`
 compares deterministic bytes and verifies the signature. The pinned descriptor
-is unchanged; old bank quotes lacking the asset remain unsupported.
+is unchanged. This existing-Ledger fixture intentionally has no `asset`; local
+CAIP-19 settlement context is never inserted into signed details. It verifies
+approval creation only, not MCP execution or settlement.

@@ -186,8 +186,12 @@ It does not build or deploy a server. Runtime authentication, permissions, and
 financial normalization tests belong to the Gateway and Backend services.
 
 
-The optional local Go client supports protected internal Banking transfer
-approvals paid by Gas Station using a separately registered financial credential.
-It validates and signs the selected frozen quote, then reuses verified execution
-continuations. External bank payouts and bank-paid internal gas remain outside
-this adapter. See [the local client guide](docs/local-client.md).
+The optional local Go client creates internal Banking transfer approvals from
+existing Ledger Send v1 quotes paid by Gas Station using a separately registered
+financial credential. It preserves the quoted UUID identities and signed fields
+without adding a chain asset. Banking internal execution remains unsupported:
+existing Ledger uses an unbound raw-signing path. Continue execution through the
+existing human flow. External bank payouts and bank-paid internal gas remain
+outside this adapter. Business schemas and preparation stay in the client;
+no remote templates or server-preparation RPC are used.
+See [the local client guide](docs/local-client.md).

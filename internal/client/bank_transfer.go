@@ -41,6 +41,7 @@ func addBankTransferContext(schema document) {
 	}
 	fields["approvalDetailsJson"] = document{"type": "string", "maxLength": 32768, "description": "Exact approvalDetailsJson from the selected fresh internal Banking quote. Never supply a provider signing payload."}
 	fields["walletId"] = document{"type": "string", "description": "Custody wallet ID from the frozen quote. Ledger independently verifies this binding against the source Banking account."}
+	fields["asset"] = document{"type": "string", "description": "Independently verified local ERC20 settlement identity. This is not present in the existing signed quote and must never be inserted into it."}
 	fields["decimals"] = document{"type": "integer", "minimum": 2, "maximum": 36}
 	props["bankTransferContext"] = document{"type": "object", "additionalProperties": false, "properties": fields, "required": bankTransferContextFields}
 	required, _ := schema["required"].([]any)
@@ -48,7 +49,7 @@ func addBankTransferContext(schema document) {
 }
 
 func bankTransferIntent(key DeviceKey, c SigningContext, args document, now time.Time) (document, document, error) {
-	bad := errors.New("use the exact unexpired single-ERC20 Banking internal quote with independently verified metadata and Gas Station gas")
+	bad := errors.New("use the exact unexpired existing Send v1 Banking internal quote with independently verified metadata and Gas Station gas")
 	if c.Binding.PolicyProfile != "financial-operations-v1" {
 		return nil, nil, errors.New("Banking transfer requires a newly authorized financial-operations-v1 credential")
 	}
@@ -133,10 +134,10 @@ func bankTransferIntent(key DeviceKey, c SigningContext, args document, now time
 		return nil, nil, bad
 	}
 	send, ok := details["sendTransaction"].(map[string]any)
-	if !ok || !allowedBankFields(send, "v", "walletId", "networkId", "instrumentId", "fromAddress", "toAddress", "amount", "notes", "gasSource", "gasUsdFee", "fromTo", "gas", "asset") || send["v"] != float64(1) {
+	if !ok || !allowedBankFields(send, "v", "walletId", "networkId", "instrumentId", "fromAddress", "toAddress", "amount", "notes", "gasSource", "gasUsdFee", "fromTo", "gas") || send["v"] != float64(1) {
 		return nil, nil, bad
 	}
-	for _, name := range []string{"walletId", "networkId", "instrumentId", "fromAddress", "toAddress", "asset"} {
+	for _, name := range []string{"walletId", "networkId", "instrumentId", "fromAddress", "toAddress"} {
 		if send[name] != ctx[name] {
 			return nil, nil, bad
 		}

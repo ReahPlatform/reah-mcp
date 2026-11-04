@@ -101,10 +101,11 @@ Tool names are not used to select this adapter. The context requires:
 - `approvalDetailsJson`, `expiresAt`: the selected quote's exact frozen protobuf
   JSON and RFC3339 expiry. Unknown or duplicate protobuf fields fail closed.
 - `sourceBankingAccountId`, `targetBankingAccountId`, `fromAddress`, `toAddress`,
-  `walletId`, `networkId`, `instrumentId`, `asset`, `decimals`: exact quote
-  identities checked against owned Banking settlement metadata and CAIP-19
-  ERC20 identity. The custody `walletId` comes from the frozen quote; Ledger
-  independently checks it against the source Banking account before execution.
+  `walletId`, `networkId`, `instrumentId`, `asset`, `decimals`: quoted UUID
+  identities and independently verified local Banking settlement metadata. The
+  CAIP-19 ERC20 `asset` and precision remain local; they are absent from the
+  signed quote and are never inserted into it. The custody `walletId` comes
+  from the frozen quote and is checked against the source account by Ledger.
 - `amountCents`, `amountAtomic`, `gasFeeCents`, `totalDebitCents`: exact quote
   terms. Amounts are integer strings; `decimals` is an integer. Source principal
   and debit are equal for Gas Station gas. Atomic principal equals USD cents
@@ -116,6 +117,11 @@ and Gas Station gas with no Banking payer ID or fee output. Every populated
 field outside this closed contract is rejected. The complete parsed protobuf
 is signed unchanged with `requestId` as intent nonce. Context stays local; the
 operation proof binds the upstream `entityId`, `quoteId`, `requestId` and exact
-request signature. Execution reuses verified continuations with the original
-`bank_internal_transfer` approval. This adapter does not authorize external
-fiat/USD payouts or bank-paid internal gas.
+request signature. A populated `asset` in the frozen Send v1 quote is rejected
+as a different contract. This is approval-only support for existing Ledger;
+Banking internal execution is blocked before any remote context or signing
+call because Ledger retains its unbound raw-signing route. Continue through
+the existing human execution flow and never infer settlement from approval
+status. External fiat/USD payouts and bank-paid internal gas are unsupported.
+Schemas, mappings and preparation stay local in the client; no remote templates
+or server-preparation RPC are used.

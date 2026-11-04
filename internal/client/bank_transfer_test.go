@@ -22,7 +22,7 @@ func bankTransferArgs() document {
 		return document{"partyType": "PARTY_TYPE_BANKING", "bankingId": id, "address": address, "instrumentId": testID, "amount": "10000000", "estimatedUsd": "1000"}
 	}
 	send := document{"v": 1, "amount": "10000000", "notes": "Banking fixture", "gasSource": "gas_station", "gasUsdFee": "2", "gas": document{"usd": "2", "payerAccountType": "gas_station"}, "fromTo": document{"from": []any{party(testID, stringAt(context, "fromAddress"))}, "to": []any{party(testOtherID, stringAt(context, "toAddress"))}}}
-	for _, name := range []string{"walletId", "networkId", "instrumentId", "fromAddress", "toAddress", "asset"} {
+	for _, name := range []string{"walletId", "networkId", "instrumentId", "fromAddress", "toAddress"} {
 		send[name] = context[name]
 	}
 	raw, _ := json.Marshal(document{"sendTransaction": send})
@@ -87,8 +87,10 @@ func TestBankTransferRejectsUnsafeQuotes(t *testing.T) {
 		},
 		"unknown context":   func(a document) { a["bankTransferContext"].(document)["payload"] = "arbitrary" },
 		"arbitrary signing": func(a document) { a["requestSignature"] = document{} },
-		"missing asset":     func(a document) { mutateBankQuote(a, func(s document) { delete(s, "asset") }) },
-		"wallet send":       func(a document) { mutateBankQuote(a, func(s document) { s["v"] = 2 }) },
+		"future populated asset": func(a document) {
+			mutateBankQuote(a, func(s document) { s["asset"] = a["bankTransferContext"].(document)["asset"] })
+		},
+		"wallet send": func(a document) { mutateBankQuote(a, func(s document) { s["v"] = 2 }) },
 		"wrong recipient": func(a document) {
 			mutateBankQuote(a, func(s document) { s["toAddress"] = "0x4444444444444444444444444444444444444444" })
 		},
