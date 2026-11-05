@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"sync"
@@ -131,9 +130,9 @@ func (t bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if e != nil {
 		return nil, errConnection
 	}
-	if response.StatusCode == 401 {
-		_ = response.Body.Close()
-		return nil, errors.New("Reah authorization expired or was revoked; log in again and reconnect")
+	if response.StatusCode >= 400 {
+		defer response.Body.Close()
+		return nil, oauthHTTPError(response, "/mcp")
 	}
 	return response, nil
 }
@@ -156,7 +155,7 @@ func (r *Remote) connected(ctx context.Context) (*mcp.ClientSession, error) {
 	c := mcp.NewClient(&mcp.Implementation{Name: "reah-go-mcp", Version: r.Version}, &mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{}, MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true}})
 	s, e := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: r.OAuth.Config.Server, HTTPClient: h, MaxRetries: -1, DisableStandaloneSSE: true, MaxEventSize: 2 * 1024 * 1024}, nil)
 	if e != nil {
-		return nil, errConnection
+		return nil, safeConnectionError(e)
 	}
 	r.session = s
 	return s, nil
@@ -170,6 +169,9 @@ func (r *Remote) Close() {
 	}
 }
 func (r *Remote) List(ctx context.Context) ([]*mcp.Tool, error) {
+	if _, e := r.OAuth.AccessToken(ctx); e != nil {
+		return nil, e
+	}
 	s, e := r.connected(ctx)
 	if e != nil {
 		return nil, e
@@ -180,7 +182,7 @@ func (r *Remote) List(ctx context.Context) ([]*mcp.Tool, error) {
 	for {
 		p, e := s.ListTools(ctx, &mcp.ListToolsParams{Cursor: cursor})
 		if e != nil {
-			return nil, errConnection
+			return nil, safeConnectionError(e)
 		}
 		all = append(all, p.Tools...)
 		cursor = p.NextCursor
@@ -204,7 +206,7 @@ func (r *Remote) invoke(ctx context.Context, name string, args document) (*mcp.C
 	}
 	result, e := s.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if e != nil {
-		return nil, errConnection
+		return nil, safeConnectionError(e)
 	}
 	return result, nil
 }
@@ -383,7 +385,7 @@ func cloneDocument(d document) document {
 // NewServer keeps stdout exclusively for MCP. The remote catalog is loaded lazily,
 // so browser consent never blocks the host's MCP initialization handshake.
 func NewServer(remote *Remote, version string) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "reah-go-mcp", Version: version}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}, SupportedProtocolVersions: []string{"2025-11-25"}})
+	s := mcp.NewServer(&mcp.Implementation{Name: "reah-go-mcp", Version: version}, &mcp.ServerOptions{Instructions: "If Reah tools are missing or signing is unavailable, call reah_local_connection_status with check=true and follow nextAction using the exact server and profile. OAuth login, key possession proof and owner-confirmed financial registration are separate stages. Do not claim signing readiness from local awaiting_provider state. Resume incomplete registration with enroll-key while the registration window is open. Expired browser signing access requires the owner to renew Web authentication, not replace MCP credentials. Only start a new login when status explicitly requires one, such as login_required or registration_expired. Use --no-browser --json for labeled OAuth and registration URLs; open each stage's private URL for the user and keep login running until its callback completes. Never approve financial registration for the user or retry a payment to test connectivity.", Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}, SupportedProtocolVersions: []string{"2025-11-25"}})
 	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -392,9 +394,15 @@ func NewServer(remote *Remote, version string) *mcp.Server {
 			case "tools/list":
 				tools, e := remote.List(ctx)
 				if e != nil {
-					return nil, fmt.Errorf("Reah tool catalog could not be loaded; check login and connectivity")
+					// Keep diagnosis discoverable even before login or during an outage.
+					return &mcp.ListToolsResult{Tools: []*mcp.Tool{connectionStatusTool()}}, nil
 				}
-				return &mcp.ListToolsResult{Tools: tools}, nil
+				for _, tool := range tools {
+					if tool.Name == connectionStatusToolName {
+						return nil, errors.New("remote catalog conflicts with the local connection diagnostic")
+					}
+				}
+				return &mcp.ListToolsResult{Tools: append([]*mcp.Tool{connectionStatusTool()}, tools...)}, nil
 			case "tools/call":
 				request, ok := req.(*mcp.CallToolRequest)
 				if !ok || request.Params == nil {
@@ -413,6 +421,9 @@ func NewServer(remote *Remote, version string) *mcp.Server {
 				}
 				if e != nil || args == nil {
 					return errorResult("Tool arguments must be an object"), nil
+				}
+				if request.Params.Name == connectionStatusToolName {
+					return remote.connectionStatus(ctx, args), nil
 				}
 				out, e := remote.Call(ctx, request.Params.Name, args)
 				if e != nil {

@@ -76,7 +76,7 @@ func (o *OAuth) request(ctx context.Context, path string, body any, token string
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("Reah OAuth request failed (HTTP %d); reconnect if necessary", response.StatusCode)
+		return nil, oauthHTTPError(response, path)
 	}
 	if strings.HasSuffix(path, "/revoke") {
 		return document{}, nil
@@ -151,7 +151,7 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 			return e
 		}
 		if s == nil || s.Tokens == nil {
-			return errors.New("Reah is not connected; run reah-mcp login with the same server and profile")
+			return &connectionError{"login_required", "Reah has no usable local OAuth credentials; run status with this server and profile for the exact login command"}
 		}
 		if s.Tokens.ExpiresAt > time.Now().Add(30*time.Second).UnixMilli() {
 			token = s.Tokens.AccessToken
@@ -166,11 +166,11 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 		}
 		d, e := o.request(ctx, "/mcp/oauth/token", url.Values{"grant_type": {"refresh_token"}, "client_id": {s.ClientID}, "resource": {o.Config.Server}, "refresh_token": {old.RefreshToken}}, "")
 		if e != nil {
-			return e
+			return fmt.Errorf("refresh outcome is unconfirmed; the consumed refresh token will not be retried; run status for a new login command: %w", e)
 		}
 		s.Tokens, e = parseTokens(d)
 		if e != nil {
-			return e
+			return &connectionError{"login_required", "refresh returned unusable credentials; the consumed token will not be retried; run status for a new login command"}
 		}
 		s.PendingRevocation = ""
 		if e = o.Store.Write(s); e != nil {
@@ -188,6 +188,23 @@ func (o *OAuth) Login(ctx context.Context, enroll bool, open func(string) error)
 
 // LoginWithPolicyProfile always creates new consent; it never upgrades a grant.
 func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile string, open func(string) error) error {
+	return o.LoginWithProgress(ctx, enroll, profile, func(step LoginStep) error {
+		if step.URL != "" {
+			return open(step.URL)
+		}
+		return nil
+	})
+}
+
+// LoginStep distinguishes browser consent from provider credential registration.
+// URLs are private continuation links; do not include them in shared logs.
+type LoginStep struct {
+	Stage   string `json:"stage"`
+	Message string `json:"message"`
+	URL     string `json:"url,omitempty"`
+}
+
+func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile string, progress func(LoginStep) error) error {
 	if profile != "wallet-transfer-v1" && profile != "financial-operations-v1" || !enroll && profile != "wallet-transfer-v1" {
 		return errors.New("use a supported policy profile with --enroll-key for financial signing")
 	}
@@ -252,7 +269,7 @@ func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile
 			q.Set("credential_public_key", s.DeviceKey.PublicKey)
 		}
 		u.RawQuery = q.Encode()
-		if e = open(u.String()); e != nil {
+		if e = progress(LoginStep{"oauth_consent_required", "Sign in to Reah, select businesses and duration, and authorize. Keep this command running for the callback. A new login replaces this profile's previous connection.", u.String()}); e != nil {
 			return e
 		}
 		var callback callbackResult
@@ -280,6 +297,9 @@ func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile
 			return e
 		}
 		callback.finish(true)
+		if e = progress(LoginStep{"oauth_connected", "OAuth credentials are saved. This alone does not enable financial signing.", ""}); e != nil {
+			return e
+		}
 		if !enroll {
 			return nil
 		}
@@ -290,7 +310,7 @@ func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile
 		q = u.Query()
 		q.Set("connectionId", s.Enrollment.ConnectionID)
 		u.RawQuery = q.Encode()
-		return open(u.String())
+		return progress(LoginStep{"credential_registration_required", registrationInstructions, u.String()})
 	})
 }
 func (o *OAuth) Logout(ctx context.Context) error {
@@ -324,10 +344,31 @@ func (o *OAuth) Status(ctx context.Context) (document, error) {
 			return e
 		}
 		out = document{"server": o.Config.Server, "profile": o.Config.Profile, "credentialsSaved": s != nil && s.Tokens != nil, "revocationPending": s != nil && s.PendingRevocation != ""}
+		out["readOnlyStatus"], out["signingStatus"] = "not_checked", "not_requested"
+		out["phase"] = "login_required"
+		out["nextAction"] = o.action("login", "Authorize a new connection. Login replaces this profile's previous grant.", "login")
 		if s != nil {
+			if s.PendingRevocation != "" {
+				out["recoveryNote"] = "Local access was disabled before an unconfirmed refresh or revocation. Never replay the saved refresh token manually; a new login will attempt revocation before fresh consent."
+			}
 			out["publicKey"] = s.DeviceKey.PublicKey
 			if s.Tokens != nil {
 				out["accessExpiresAt"] = time.UnixMilli(s.Tokens.ExpiresAt).UTC().Format(time.RFC3339)
+				out["phase"] = "local_credentials_saved"
+				out["nextAction"] = o.action("check_connection", "Verify the live connection before claiming readiness.", "status", "--check")
+			}
+			out["credentialEnrollmentRequested"] = s.CredentialEnrollmentRequested
+			if s.CredentialEnrollmentRequested {
+				out["policyProfile"] = policyProfile(s)
+				out["signingStatus"] = "not_checked"
+				if s.Tokens == nil {
+					out["nextAction"] = o.action("login", "Authorize a new connection with the original signing policy. Login replaces the previous grant.", "login", "--enroll-key", "--policy-profile", policyProfile(s))
+				} else if s.Enrollment == nil {
+					out["phase"] = "possession_proof_required"
+					out["nextAction"] = o.action("resume_registration", "Resume this connection without replacing its key or OAuth grant.", "enroll-key")
+				} else {
+					out["phase"] = "registration_unverified"
+				}
 			}
 			if s.Enrollment != nil {
 				out["enrollment"] = s.Enrollment

@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/ReahPlatform/reah-mcp/internal/client"
@@ -19,6 +20,10 @@ import (
 var version = "dev"
 
 func command() *cobra.Command {
+	return commandWithOAuth(client.NewOAuth)
+}
+
+func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command {
 	var server, profile string
 	buildVersion := version
 	if buildVersion == "dev" {
@@ -34,44 +39,90 @@ func command() *cobra.Command {
 		if e != nil {
 			return nil, e
 		}
-		return client.NewOAuth(c), nil
+		return factory(c), nil
 	}
-	var enroll, noBrowser bool
+	var enroll, noBrowser, jsonProgress bool
 	var policyProfile string
+	progress := func(cmd *cobra.Command, noBrowser, jsonProgress bool) func(client.LoginStep) error {
+		return func(step client.LoginStep) error {
+			if jsonProgress {
+				if err := json.NewEncoder(cmd.OutOrStdout()).Encode(step); err != nil {
+					return err
+				}
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[%s] %s\n", step.Stage, step.Message)
+				if step.URL != "" {
+					fmt.Fprintln(cmd.ErrOrStderr(), "Open this private URL (do not share it):\n"+step.URL)
+				}
+			}
+			if step.URL != "" && !noBrowser {
+				if err := openBrowser(cmd.Context(), step.URL); err != nil {
+					// Keep the callback alive so opening the printed URL still works.
+					fmt.Fprintln(cmd.ErrOrStderr(), "Browser launch failed. Open the URL printed for this stage manually; keep this command running.")
+				}
+			}
+			return nil
+		}
+	}
+	finish := func(cmd *cobra.Command, o *client.OAuth, jsonProgress bool) error {
+		status, err := o.Status(cmd.Context())
+		if err != nil {
+			return err
+		}
+		if jsonProgress {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"stage": "local_status", "status": status})
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), "Local credentials saved. Financial signing is not confirmed until status --check verifies it.")
+		fmt.Fprintf(cmd.ErrOrStderr(), "Verify: reah-mcp status --check --server %s --profile %s\n", strconv.Quote(o.Config.Server), strconv.Quote(o.Config.Profile))
+		if enrollRequested, _ := status["credentialEnrollmentRequested"].(bool); enrollRequested {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Resume the existing registration: reah-mcp enroll-key --server %s --profile %s\n", strconv.Quote(o.Config.Server), strconv.Quote(o.Config.Profile))
+		}
+		return nil
+	}
 	login := &cobra.Command{Use: "login", Short: "Authorize this client in the browser", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o, e := makeOAuth()
 		if e != nil {
 			return e
 		}
-		e = o.LoginWithPolicyProfile(cmd.Context(), enroll, policyProfile, func(u string) error {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Open this URL to continue (do not share it):\n"+u)
-			if noBrowser {
-				return nil
-			}
-			return openBrowser(cmd.Context(), u)
-		})
-		if e == nil {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Reah OAuth login complete. If requested, finish credential registration in the browser.")
+		e = o.LoginWithProgress(cmd.Context(), enroll, policyProfile, progress(cmd, noBrowser, jsonProgress))
+		if e != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Inspect saved progress before starting another login: reah-mcp status --check --server %s --profile %s\n", strconv.Quote(o.Config.Server), strconv.Quote(o.Config.Profile))
+			return e
 		}
-		return e
+		return finish(cmd, o, jsonProgress)
 	}}
 	login.Flags().StringVar(&policyProfile, "policy-profile", "wallet-transfer-v1", "Explicit signing policy: wallet-transfer-v1 or financial-operations-v1 (requires --enroll-key)")
 	login.Flags().BoolVar(&enroll, "enroll-key", false, "Request owner-confirmed signing credential registration")
 	login.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the authorization URL without launching a browser")
+	login.Flags().BoolVar(&jsonProgress, "json", false, "Emit newline-delimited JSON stages and private continuation URLs for the Agent")
 	root.AddCommand(login)
-	root.AddCommand(&cobra.Command{Use: "status", Short: "Show local connection status without secrets", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var check bool
+	status := &cobra.Command{Use: "status", Short: "Show connection stages and exact next actions without secrets", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o, e := makeOAuth()
 		if e != nil {
 			return e
 		}
 		d, e := o.Status(cmd.Context())
-		if e != nil {
+		if e != nil && d == nil {
 			return e
+		}
+		if check {
+			remote := &client.Remote{OAuth: o, Version: buildVersion}
+			defer remote.Close()
+			d, e = remote.CheckStatus(cmd.Context())
+			if d == nil {
+				return e
+			}
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
-		return enc.Encode(d)
-	}})
+		if err := enc.Encode(d); err != nil {
+			return err
+		}
+		return e
+	}}
+	status.Flags().BoolVar(&check, "check", false, "Verify live read access and each enrolled business's signing binding (may refresh OAuth; never moves funds)")
+	root.AddCommand(status)
 	root.AddCommand(&cobra.Command{Use: "logout", Short: "Revoke the connection and remove local credentials", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o, e := makeOAuth()
 		if e != nil {
@@ -83,13 +134,20 @@ func command() *cobra.Command {
 		fmt.Fprintln(cmd.ErrOrStderr(), "Reah disconnected.")
 		return nil
 	}})
-	root.AddCommand(&cobra.Command{Use: "enroll-key", Short: "Resume proof of possession for the current connection", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var resumeNoBrowser, resumeJSON bool
+	resume := &cobra.Command{Use: "enroll-key", Short: "Resume this connection's proof and browser registration without replacing credentials", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o, e := makeOAuth()
 		if e != nil {
 			return e
 		}
-		return o.EnrollKey(cmd.Context())
-	}})
+		if e = o.ResumeRegistration(cmd.Context(), progress(cmd, resumeNoBrowser, resumeJSON)); e != nil {
+			return e
+		}
+		return finish(cmd, o, resumeJSON)
+	}}
+	resume.Flags().BoolVar(&resumeNoBrowser, "no-browser", false, "Print the existing credential registration URL without launching a browser")
+	resume.Flags().BoolVar(&resumeJSON, "json", false, "Emit newline-delimited JSON stages and the private registration URL")
+	root.AddCommand(resume)
 	root.AddCommand(&cobra.Command{Use: "serve", Short: "Serve the authenticated Reah catalog over stdio", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		o, e := makeOAuth()
 		if e != nil {
@@ -114,7 +172,7 @@ func openBrowser(parent context.Context, url string) error {
 		cmd = exec.CommandContext(ctx, "xdg-open", url)
 	}
 	if e := cmd.Run(); e != nil {
-		return fmt.Errorf("browser could not be opened; rerun login with --no-browser")
+		return fmt.Errorf("browser could not be opened")
 	}
 	return nil
 }

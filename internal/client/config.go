@@ -29,4 +29,4 @@ func httpClient() *http.Client {
 }
 
 // Public errors never include URLs containing OAuth codes, bodies or credentials.
-var errConnection = errors.New("Reah could not complete the request; check connectivity and reconnect if necessary")
+var errConnection = errors.New("Reah could not complete the request; check connectivity and run reah-mcp status --check with the same server and profile before replacing the connection")
