@@ -52,10 +52,14 @@ func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command 
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "[%s] %s\n", step.Stage, step.Message)
 				if step.URL != "" {
-					fmt.Fprintln(cmd.ErrOrStderr(), "Open this private URL (do not share it):\n"+step.URL)
+					label := "Open this private URL (do not share it):"
+					if step.BrowserContinuation {
+						label = "Continue in the existing browser tab. Recovery URL (open only if needed; do not share it):"
+					}
+					fmt.Fprintln(cmd.ErrOrStderr(), label+"\n"+step.URL)
 				}
 			}
-			if step.URL != "" && !noBrowser {
+			if step.URL != "" && !step.BrowserContinuation && !noBrowser {
 				if err := openBrowser(cmd.Context(), step.URL); err != nil {
 					// Keep the callback alive so opening the printed URL still works.
 					fmt.Fprintln(cmd.ErrOrStderr(), "Browser launch failed. Open the URL printed for this stage manually; keep this command running.")

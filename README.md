@@ -226,8 +226,11 @@ server-preparation RPC are used. Client support alone does not establish server
 deployment, completed execution or settlement.
 See [the local client guide](docs/local-client.md).
 
-The Go client separates OAuth consent from user-confirmed credential
-registration. Agents can use `login --no-browser --json` for labeled continuation
-URLs, `enroll-key` to resume the same connection, and `status --check` or the
-always-available local `reah_local_connection_status` diagnostic to verify read
+The Go client uses one connection for reads and optional financial operations.
+With `login --enroll-key`, the original browser tab continues from OAuth consent
+to explicit financial registration after token storage and key possession proof.
+Agents can use `login --no-browser --json` for labeled continuation URLs;
+`browserContinuation: true` means the tab continues automatically, so its URL is
+only needed for recovery. Use `enroll-key` to resume the same connection, and
+`status --check` or the always-available local `reah_local_connection_status` diagnostic to verify read
 access and each enrolled business's signing binding before claiming readiness.

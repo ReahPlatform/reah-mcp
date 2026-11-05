@@ -90,75 +90,136 @@ func TestResumeRegistrationPreservesGrantAndKey(t *testing.T) {
 }
 
 func TestOAuthStagesDistinguishConsentAndFinancialRegistration(t *testing.T) {
-	var origin string
-	var o *OAuth
-	var proof document
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var d document
-		switch r.URL.Path {
-		case "/.well-known/oauth-protected-resource/mcp":
-			d = document{"resource": origin + "/mcp", "authorization_servers": []string{origin}}
-		case "/.well-known/oauth-authorization-server":
-			d = discoveryFixture(origin)
-		case "/mcp/oauth/register":
-			d = document{"client_id": "client"}
-		case "/mcp/oauth/token":
-			d = document{"access_token": "access", "refresh_token": "refresh", "expires_in": 900, "scope": Scope, "token_type": "Bearer"}
-		case "/mcp/credentials/prepare":
-			s, _ := o.Store.Read()
-			proof = proofFixture(t, o.Config, s)
-			d = proof
-		case "/mcp/credentials/prove":
-			proof["state"] = "awaiting_provider"
-			d = proof
-		default:
-			t.Errorf("unexpected login request: %s", r.URL.Path)
-			http.Error(w, "unexpected", 500)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(d)
-	}))
-	defer server.Close()
-	origin = server.URL
-	c, _ := Configure(origin+"/mcp", "stages")
-	o = &OAuth{c, &memoryStore{}, server.Client()}
-	var stages []string
-	callbackDone := make(chan error, 1)
-	err := o.LoginWithProgress(context.Background(), true, "wallet-transfer-v1", func(step LoginStep) error {
-		stages = append(stages, step.Stage)
-		if step.Stage == "oauth_consent_required" {
-			u, _ := url.Parse(step.URL)
-			q := u.Query()
-			callback, _ := url.Parse(q.Get("redirect_uri"))
-			callback.RawQuery = url.Values{"code": {"code"}, "state": {q.Get("state")}, "iss": {origin}}.Encode()
-			go func() {
-				response, err := http.Get(callback.String())
-				if err == nil {
-					_ = response.Body.Close()
+	for _, scenario := range []struct {
+		name, profile, failPath string
+		enroll, browserAPI      bool
+	}{
+		{name: "read_only", profile: "wallet-transfer-v1"},
+		{name: "wallet_registration", profile: "wallet-transfer-v1", enroll: true},
+		{name: "wallet_single_browser", profile: "wallet-transfer-v1", enroll: true, browserAPI: true},
+		{name: "financial_registration", profile: "financial-operations-v1", enroll: true},
+		{name: "prepare_failure", profile: "wallet-transfer-v1", enroll: true, failPath: "/mcp/credentials/prepare"},
+		{name: "proof_failure", profile: "wallet-transfer-v1", enroll: true, failPath: "/mcp/credentials/prove"},
+		{name: "token_failure", profile: "wallet-transfer-v1", enroll: true, failPath: "/mcp/oauth/token"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			var origin string
+			var o *OAuth
+			var proof document
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == scenario.failPath {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
 				}
-				callbackDone <- err
-			}()
-		}
-		if step.Stage == "credential_registration_required" {
-			u, _ := url.Parse(step.URL)
-			if u.Query().Get("connectionId") != testID || !strings.Contains(step.Message, "not yet verified") {
-				t.Error("second page not identified as pending financial registration")
+				var d document
+				switch r.URL.Path {
+				case "/.well-known/oauth-protected-resource/mcp":
+					d = document{"resource": origin + "/mcp", "authorization_servers": []string{origin}}
+				case "/.well-known/oauth-authorization-server":
+					d = discoveryFixture(origin)
+				case "/mcp/oauth/register":
+					d = document{"client_id": "client"}
+				case "/mcp/oauth/token":
+					d = document{"access_token": "access", "refresh_token": "refresh", "expires_in": 900, "scope": Scope, "token_type": "Bearer"}
+				case "/mcp/credentials/prepare":
+					s, _ := o.Store.Read()
+					var profile any
+					if scenario.profile == "financial-operations-v1" {
+						profile = scenario.profile
+					}
+					proof = financialEnrollmentFixture(t, o.Config, s, profile)
+					d = proof
+				case "/mcp/credentials/prove":
+					proof["state"] = "awaiting_provider"
+					d = proof
+				default:
+					t.Errorf("unexpected login request: %s", r.URL.Path)
+					http.Error(w, "unexpected", 500)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(d)
+			}))
+			defer server.Close()
+			origin = server.URL
+			c, _ := Configure(origin+"/mcp", "stages")
+			o = &OAuth{c, &memoryStore{}, server.Client()}
+			var stages []string
+			callbackDone := make(chan error, 1)
+			continuing := scenario.enroll && scenario.failPath == ""
+			progress := func(step LoginStep) error {
+				stages = append(stages, step.Stage)
+				if step.Stage == "oauth_consent_required" {
+					u, _ := url.Parse(step.URL)
+					q := u.Query()
+					callback, _ := url.Parse(q.Get("redirect_uri"))
+					callback.RawQuery = url.Values{"code": {"code"}, "state": {q.Get("state")}, "iss": {origin}}.Encode()
+					go func() {
+						browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+						response, err := browser.Get(callback.String())
+						if err == nil {
+							_ = response.Body.Close()
+							wantCode, wantLocation := http.StatusOK, ""
+							if continuing {
+								wantCode, wantLocation = http.StatusSeeOther, origin+"/mcp/credentials?connectionId="+testID
+							} else if scenario.failPath == "/mcp/oauth/token" {
+								wantCode = http.StatusBadRequest
+							}
+							if response.StatusCode != wantCode || response.Header.Get("Location") != wantLocation {
+								t.Errorf("incorrect browser continuation: %d %s", response.StatusCode, response.Header.Get("Location"))
+							}
+						}
+						callbackDone <- err
+					}()
+				}
+				if step.Stage == "credential_registration_required" {
+					u, _ := url.Parse(step.URL)
+					if u.Query().Get("connectionId") != testID || !step.BrowserContinuation {
+						t.Error("financial registration not identified as same-tab continuation")
+					}
+				}
+				return nil
 			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := <-callbackDone; err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(stages, []string{"oauth_consent_required", "oauth_connected", "credential_registration_required"}) {
-		t.Fatalf("wrong stage order: %v", stages)
-	}
-	status, _ := o.Status(context.Background())
-	if status["phase"] != "registration_unverified" || status["signingStatus"] != "not_checked" {
-		t.Fatal("login falsely claimed signing readiness")
+			var err error
+			if scenario.browserAPI {
+				opened := 0
+				err = o.LoginWithPolicyProfile(context.Background(), scenario.enroll, scenario.profile, func(address string) error {
+					opened++
+					if opened != 1 {
+						t.Error("opened a second browser tab for financial registration")
+						return nil
+					}
+					return progress(LoginStep{Stage: "oauth_consent_required", URL: address})
+				})
+			} else {
+				err = o.LoginWithProgress(context.Background(), scenario.enroll, scenario.profile, progress)
+			}
+			if (err != nil) != (scenario.failPath != "") {
+				t.Fatalf("unexpected login outcome: %v", err)
+			}
+			if err := <-callbackDone; err != nil {
+				t.Fatal(err)
+			}
+			wantStages := []string{"oauth_consent_required"}
+			if scenario.failPath != "/mcp/oauth/token" {
+				wantStages = append(wantStages, "oauth_connected")
+				if token, err := o.AccessToken(context.Background()); err != nil || token != "access" {
+					t.Fatalf("read access lost when optional registration was skipped or failed: %v", err)
+				}
+			}
+			if continuing {
+				wantStages = append(wantStages, "credential_registration_required")
+				status, _ := o.Status(context.Background())
+				if status["phase"] != "registration_unverified" || status["signingStatus"] != "not_checked" {
+					t.Fatal("login falsely claimed signing readiness")
+				}
+			}
+			if scenario.browserAPI {
+				wantStages = []string{"oauth_consent_required"}
+			}
+			if !reflect.DeepEqual(stages, wantStages) {
+				t.Fatalf("wrong stage order: %v", stages)
+			}
+		})
 	}
 }
 
