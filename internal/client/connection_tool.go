@@ -12,7 +12,7 @@ const connectionStatusToolName = "reah_local_connection_status"
 func connectionStatusTool() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        connectionStatusToolName,
-		Description: "Diagnose this local Go client's OAuth and signing registration without moving funds. Always available, including before login or when the remote catalog fails. Set check=true to verify the live catalog and each enrolled business's signing binding; automatic OAuth refresh may occur. Without check, only inspect saved local state. Follow nextAction.command and nextAction.args with the same profile. Ask the owner to complete browser consent; do not handle their OTP, Passkey or private key. A ready signing binding does not override transaction permissions, approval policy, limits or balance checks.",
+		Description: "Diagnose this local Go client's OAuth and signing registration without moving funds. Always available, including before login or when the remote catalog fails. Set check=true to verify the live catalog and each enrolled business's signing binding; automatic OAuth refresh may occur. Without check, only inspect saved local state. Follow nextAction.command and nextAction.args with the same profile. Ask the user to complete browser consent; do not handle their OTP, Passkey or private key. A ready signing binding does not override transaction permissions, approval policy, limits or balance checks.",
 		InputSchema: document{"type": "object", "properties": document{"check": document{"type": "boolean", "default": false}}, "additionalProperties": false},
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}

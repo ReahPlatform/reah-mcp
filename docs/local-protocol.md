@@ -64,7 +64,7 @@ that signed intent. The local adapter never accepts arbitrary payload bytes.
 
 Conversions require live `financial-operations-v1` credentials. Request one with
 `login --enroll-key --policy-profile financial-operations-v1`; this creates a new
-connection and requires explicit owner registration. The default stays
+connection and requires explicit user-confirmed registration. The default stays
 `wallet-transfer-v1`. The selected financial profile must appear exactly in the
 frozen possession proof; a server lacking explicit profile enrollment fails
 closed. Existing wallet credentials are never silently expanded.

@@ -130,7 +130,7 @@ grant, or generates a replacement key. The server's short registration window
 can expire while already registered signing bindings remain active. The check
 tests those bindings instead of treating enrollment `expired` as proof that they
 are unusable. Incomplete registrations after that window closes require new
-owner consent; `enroll-key` cannot extend the window. A failed check retains local credentials unless refresh-token
+user consent; `enroll-key` cannot extend the window. A failed check retains local credentials unless refresh-token
 consumption is uncertain. A failed network check is not evidence that consent
 must be repeated.
 
@@ -152,9 +152,9 @@ empty catalog as a successful connection. No tokens or private keys are returned
 Use `enroll-key` to resume an interrupted signing registration. It completes any
 missing possession proof and opens the current connection's registration page,
 preserving its grant, device key and businesses. With `--no-browser --json`, the
-Agent receives a labeled URL to open for the owner. Verify completion with
+Agent receives a labeled URL to open for the user. Verify completion with
 `status --check`; a successful `enroll-key` invocation only means the registration
-page was handed off, not that the owner approved it.
+page was handed off, not that the user approved it.
 
 Login disables the old local credentials and revokes the previous connection
 before opening new consent. The same profile reuses its registered client ID.
@@ -181,6 +181,14 @@ clients use separate vaults and locks. Do not copy tokens or device private keys
 
 ## Signing boundary
 
+Financial access is optional. Owners, Admins and Operators (the legacy/backend
+`Member` role) can select it for their businesses in Reah Web. Viewer, Cardholder
+and KYB Collaborator roles cannot select it. Backend requires active membership,
+no security cooldown and effective `transaction:initiate` permission; Turnkey
+identity, browser credential and policy checks still apply. A role name or local
+key alone does not prove signing readiness. Existing approval rules and Agent
+transaction limits remain in force; only the business Owner can edit those limits.
+
 Each login generates a fresh P-256 key for that connection and keeps its private
 key in the OS vault. Ordinary login remains read-only. To opt into credential
 preparation on a server that advertises support:
@@ -202,11 +210,11 @@ same challenge and does not extend its lifetime.
 
 **Successful possession proof means `awaiting_provider`, not an active Turnkey
 credential.** When discovery advertises credential registration, login opens the
-Reah registration page. An enterprise owner reviews the connection, local public
-key, selected businesses and expiry, then confirms registration for all listed
-businesses. Web reuses its verified browser login key to stamp each separate
+Reah registration page. An authorized Owner, Admin or Operator (Member) reviews
+the connection, local public key, businesses and expiry, then explicitly selects
+financial access and confirms registration for the chosen businesses. Web reuses its verified browser login key to stamp each separate
 Turnkey registration request. Expired or unavailable browser verification requires
-sign-in again; it is not bypassed. The existing per-step Passkey path remains
+renewed verification on the Reah page; it is not bypassed. The existing per-step Passkey path remains
 available as an alternative.
 
 Ordinary OAuth consent does not require enterprise signing access. Credential
@@ -216,8 +224,8 @@ may still be readable while its signing authorization has expired. Ask the user
 to renew authentication on the Reah website, then resume the **same** registration
 page. The Go client cannot renew that browser verification, infer its cause from
 an incomplete registration alone, or bypass it. Do not run a fresh MCP login or
-ask for the user's OTP to repair this Web state. Owner confirmation belongs in
-the browser; per-business protocol requests are not a reason for the Agent to
+ask for the user's OTP to repair this Web state. The authorizing user's
+confirmation belongs in the browser; per-business protocol requests are not a reason for the Agent to
 request a separate interactive verification for each business.
 
 This separately consents to transfer initiation and execution under current
@@ -247,8 +255,8 @@ For wallet swaps, crypto converts and internal Banking transfers, create a separ
 reah-mcp login --enroll-key --policy-profile financial-operations-v1 --profile convert
 ```
 
-The server must support explicit profile enrollment, and an owner must review
-and register this new credential. A wallet-only credential cannot convert.
+The server must support explicit profile enrollment. An authorized user must
+review and register this new credential. A wallet-only credential cannot convert.
 Follow the authenticated conversion schema, including its local-only
 `convertContext`, and obtain a fresh quote, principal balance and the selected
 payer's gas balance before submitting. Amounts and minimum receive are strings in
