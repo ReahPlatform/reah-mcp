@@ -17,7 +17,7 @@
   do not duplicate GraphQL or financial normalization in the local proxy.
 - Store local OAuth credentials and device keys in the OS credential store only.
   Never expose an arbitrary signing tool or enroll keys through Web session APIs.
-  Device keys authorize transfers only after explicit owner-confirmed browser registration and live server validation.
+  Device keys authorize transfers only after explicit user-confirmed browser registration and live server validation.
 - Default plugin connections to staging until production is explicitly approved.
   Never package credentials, bearer headers, fixed entity IDs, or login sessions.
 - Keep the hosted plugin read-only. Document only tools, fields, units, and arguments verified

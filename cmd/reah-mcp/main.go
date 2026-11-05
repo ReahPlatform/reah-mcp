@@ -92,7 +92,7 @@ func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command 
 		return finish(cmd, o, jsonProgress)
 	}}
 	login.Flags().StringVar(&policyProfile, "policy-profile", "wallet-transfer-v1", "Explicit signing policy: wallet-transfer-v1 or financial-operations-v1 (requires --enroll-key)")
-	login.Flags().BoolVar(&enroll, "enroll-key", false, "Request owner-confirmed signing credential registration")
+	login.Flags().BoolVar(&enroll, "enroll-key", false, "Request user-confirmed signing credential registration")
 	login.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the authorization URL without launching a browser")
 	login.Flags().BoolVar(&jsonProgress, "json", false, "Emit newline-delimited JSON stages and private continuation URLs for the Agent")
 	root.AddCommand(login)

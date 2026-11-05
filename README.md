@@ -1,8 +1,8 @@
 # Reah MCP
 
-Connect AI assistants to Reah financial data through a hosted, read-only MCP
-service. Sign in with your Reah account in the browser, choose one or more
-businesses, and authorize the connection.
+Connect AI assistants to Reah with read-only access by default and optional
+locally signed financial operations. Sign in with your Reah account in the
+browser, choose one or more businesses, and authorize the connection.
 
 **Default environment: staging, for integration testing.** All packaged MCP
 configurations use:
@@ -18,6 +18,8 @@ installation instructions, an optional analysis skill, and an optional
 no local runtime, Agent credential, or manually configured bearer token. The
 optional local client also supports explicitly authorized transfer and execution
 when the matching server features are enabled; see its signing boundary.
+Financial access is optional, requires explicit browser registration, and never
+expands the authorizing user’s existing permissions.
 
 The local client is written in Go and distributed as a standalone executable.
 It handles stdio MCP, OAuth, secure credential storage and local signing.
@@ -107,6 +109,29 @@ For example: “Show the balances for Acme” lets the assistant resolve Acme fr
 `reah_list_entities`, then call `reah_list_balances` with its ID. For a comparison
 across authorized businesses, the assistant makes separate calls for each.
 
+### Optional financial access
+
+Use the [local Go client](docs/local-client.md#signing-boundary) for financial
+operations; the hosted URL and packaged plugins remain read-only. The local
+connection includes reads and can additionally request wallet transfers,
+swaps/conversions and supported internal Banking operations with the explicit
+`financial-operations-v1` profile. Availability depends on the live server catalog
+and supported signing protocols.
+
+Owners, Admins and Operators can select financial access for their businesses.
+`Member` is the legacy/backend name displayed as `Operator` in Reah Web. Viewer,
+Cardholder and KYB Collaborator roles cannot select financial access. The server
+checks active membership, security cooldown and effective `transaction:initiate`
+permission for registration and live signing bindings. The matching Turnkey user,
+valid browser signing authorization and applicable suborganization policies must
+also permit registration; a role label alone does not establish readiness.
+
+Existing approval rules, transaction permissions and Agent transaction limits
+continue to apply. A Member/Operator does not gain approval authority by
+registering a key, and executing an operation does not approve a pending request.
+Only the current business Owner can edit Agent transaction limits. OAuth
+`reah.read` consent and key possession proof alone never enable financial access.
+
 ## Tools and financial values
 
 The hosted service provides **20 tools: 18 business reads and 2 discovery tools**.
@@ -115,8 +140,8 @@ the [data contract](docs/data-contract.md) for units, normalized results, and
 coverage limits. The connected server's tool schemas and `reah_catalog` are the
 authoritative runtime contract.
 
-Calls send a tool name and typed arguments to `/mcp`. Query documents and output
-fields are fixed by the Gateway; arbitrary GraphQL, custom field selections,
+Hosted read calls send a tool name and typed arguments to `/mcp`. Query documents
+and output fields are fixed by the Gateway; arbitrary GraphQL, custom field selections,
 and financial write operations are not exposed. Financial responses preserve
 raw GraphQL data and include exact normalized values and coverage information.
 Missing valuations are unavailable, never zero. Use normalized values without
@@ -201,7 +226,7 @@ server-preparation RPC are used. Client support alone does not establish server
 deployment, completed execution or settlement.
 See [the local client guide](docs/local-client.md).
 
-The Go client separates OAuth consent from owner-confirmed credential
+The Go client separates OAuth consent from user-confirmed credential
 registration. Agents can use `login --no-browser --json` for labeled continuation
 URLs, `enroll-key` to resume the same connection, and `status --check` or the
 always-available local `reah_local_connection_status` diagnostic to verify read

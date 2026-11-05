@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const registrationInstructions = "OAuth is connected; financial signing is not yet verified. The owner must finish credential registration for the selected businesses on this second page. If Reah reports expired browser signing access or REAUTH_REQUIRED, sign in to the Reah website again with email verification or Passkey, then reopen this registration page. Do not replace the MCP connection to fix a browser session."
+const registrationInstructions = "OAuth is connected; financial signing is not yet verified. An authorized Owner, Admin or Operator (Member) must finish credential registration for the selected businesses on this second page. If Reah reports expired browser signing access or REAUTH_REQUIRED, sign in to the Reah website again with email verification or Passkey, then reopen this registration page. Do not replace the MCP connection to fix a browser session."
 
 type connectionError struct{ Code, Message string }
 
@@ -83,7 +83,7 @@ func (o *OAuth) ResumeRegistration(ctx context.Context, progress func(LoginStep)
 			return err
 		}
 		if s == nil || s.Tokens == nil || !s.CredentialEnrollmentRequested {
-			return errors.New("this connection did not request signing; a new login with --enroll-key requires owner consent")
+			return errors.New("this connection did not request signing; a new login with --enroll-key requires user consent")
 		}
 		if s.Enrollment == nil || s.Enrollment.State == "awaiting_key_proof" {
 			if err = o.prepareKey(ctx, s); err != nil {
@@ -250,7 +250,7 @@ func (r *Remote) CheckStatus(ctx context.Context) (document, error) {
 	if d["state"] == "expired" && !ready {
 		out["signingStatus"], out["phase"] = "registration_incomplete", "registration_expired"
 		out["nextAction"] = r.OAuth.loginAction(out)
-		out["nextAction"].(document)["message"] = "Read access still works, but at least one signing registration is incomplete and the registration window has closed. To authorize those businesses, the owner must consent to a new connection; this replaces the existing grant."
+		out["nextAction"].(document)["message"] = "Read access still works, but at least one signing registration is incomplete and the registration window has closed. To authorize those businesses, the user must consent to a new connection; this replaces the existing grant."
 	}
 	if unverified {
 		out["signingStatus"], out["phase"] = "unverified", "signing_check_failed"
@@ -293,7 +293,7 @@ func (o *OAuth) loginAction(status document) document {
 	if status["credentialEnrollmentRequested"] == true {
 		args = append(args, "--enroll-key", "--policy-profile", stringAt(status, "policyProfile"))
 	}
-	return o.action("login", "Authorize a new connection with owner consent. This replaces the previous grant.", args...)
+	return o.action("login", "Authorize a new connection with user consent. This replaces the previous grant.", args...)
 }
 
 func checkedEnrollment(d document, s *Session) ([]string, error) {
