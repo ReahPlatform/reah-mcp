@@ -52,6 +52,18 @@ to `127.0.0.1` on an ephemeral port. It checks state and exchanges the code with
 PKCE S256 before showing success. Browser cookies and Web signing keys are never
 copied into the local client.
 
+For an Agent coordinating login, use `login --no-browser --json`. Output is
+newline-delimited JSON with named stages: `oauth_consent_required` contains the
+OAuth URL; `oauth_connected` confirms token storage. If `--enroll-key` was
+requested, a **second** `credential_registration_required` stage contains the
+credential registration URL. Open each URL for the user at its corresponding
+stage. Keep the login command running until the OAuth callback completes.
+Continuation URLs are private; do not post them in issues, shared transcripts or
+logs. `--no-browser` suppresses automatic browser launching, not the second step.
+The final `local_status` event is saved progress, not proof of financial readiness.
+If automatic browser launching fails, the printed URL remains usable while the
+command waits; starting another login is unnecessary.
+
 Register the installed executable in your AI client's stdio configuration. Use
 an absolute executable path if the host does not inherit your shell PATH:
 
@@ -99,12 +111,51 @@ See [the local protocol](local-protocol.md) and [tool reference](tools.md).
 
 ```sh
 reah-mcp status --profile default
+reah-mcp status --check --profile default
+reah-mcp enroll-key --no-browser --json --profile default
 reah-mcp login --profile default
 reah-mcp logout --profile default
 ```
 
-Status reports local credential presence, access-token expiry and the public
-device key. It does not prove that a connection is still valid on the server.
+Status without `--check` reads only the OS credential store. It reports local
+credential presence, access-token expiry, the public device key, a `phase`, and
+`nextAction` with a command and argument array preserving the exact server,
+profile and requested signing policy. It does not prove server readiness.
+
+`status --check` verifies authenticated catalog access, reads credential status
+and validates the live signing context for **every enrolled business**, including
+the connection ID, public key, policy profile and expiry. It can refresh OAuth
+but never starts or executes a payment, registers provider credentials, revokes a
+grant, or generates a replacement key. The server's short registration window
+can expire while already registered signing bindings remain active. The check
+tests those bindings instead of treating enrollment `expired` as proof that they
+are unusable. Incomplete registrations after that window closes require new
+owner consent; `enroll-key` cannot extend the window. A failed check retains local credentials unless refresh-token
+consumption is uncertain. A failed network check is not evidence that consent
+must be repeated.
+
+`readOnlyStatus` and `signingStatus` are independent. `signing_ready` requires
+verified bindings for all enrolled businesses and supported signed tools in the
+live catalog. Partial registration lists each business separately. Registered
+credentials with no compatible signed tools produce
+`server_capability_unavailable`; reauthorizing does not enable a server feature
+flag or add protocol support. Readiness is a snapshot and does not override
+permissions, transaction limits, approval rules, balance or fee checks.
+
+The local stdio catalog always includes `reah_local_connection_status`, even
+before login or when remote tool discovery fails. The Agent can call it with
+`{"check":true}` and follow `nextAction`. This is a local connection diagnostic,
+not an additional hosted business tool. Remote catalog failures leave only this
+diagnostic visible; the live check reports the error instead of presenting an
+empty catalog as a successful connection. No tokens or private keys are returned.
+
+Use `enroll-key` to resume an interrupted signing registration. It completes any
+missing possession proof and opens the current connection's registration page,
+preserving its grant, device key and businesses. With `--no-browser --json`, the
+Agent receives a labeled URL to open for the owner. Verify completion with
+`status --check`; a successful `enroll-key` invocation only means the registration
+page was handed off, not that the owner approved it.
+
 Login disables the old local credentials and revokes the previous connection
 before opening new consent. The same profile reuses its registered client ID.
 All tools reload credentials on each HTTP request, so running local clients use
@@ -157,6 +208,17 @@ businesses. Web reuses its verified browser login key to stamp each separate
 Turnkey registration request. Expired or unavailable browser verification requires
 sign-in again; it is not bypassed. The existing per-step Passkey path remains
 available as an alternative.
+
+Ordinary OAuth consent does not require enterprise signing access. Credential
+registration separately authorizes the new MCP key at Turnkey. If that page
+reports `REAUTH_REQUIRED` or expired browser signing access, the Web login session
+may still be readable while its signing authorization has expired. Ask the user
+to renew authentication on the Reah website, then resume the **same** registration
+page. The Go client cannot renew that browser verification, infer its cause from
+an incomplete registration alone, or bypass it. Do not run a fresh MCP login or
+ask for the user's OTP to repair this Web state. Owner confirmation belongs in
+the browser; per-business protocol requests are not a reason for the Agent to
+request a separate interactive verification for each business.
 
 This separately consents to transfer initiation and execution under current
 business permissions and approval policy; the OAuth `reah.read` grant alone

@@ -465,7 +465,7 @@ func TestCatalogAndRemoteReadIntegration(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(list.Tools) != 1 || list.Tools[0].Name != "reah_list_entities" {
+	if len(list.Tools) != 2 || list.Tools[0].Name != connectionStatusToolName || list.Tools[1].Name != "reah_list_entities" {
 		t.Fatal("incorrect filtered catalog")
 	}
 	result, e := cs.CallTool(ctx, &mcp.CallToolParams{Name: "reah_list_entities", Arguments: document{}})
