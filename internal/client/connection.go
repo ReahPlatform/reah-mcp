@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const registrationInstructions = "OAuth is connected; financial signing is not yet verified. An authorized Owner, Admin or Operator (Member) must finish credential registration for the selected businesses on this second page. If Reah reports expired browser signing access or REAUTH_REQUIRED, sign in to the Reah website again with email verification or Passkey, then reopen this registration page. Do not replace the MCP connection to fix a browser session."
+const registrationInstructions = "OAuth is connected; financial signing is not yet verified. An authorized Owner, Admin or Operator (Member) must finish credential registration for the selected businesses on the Reah registration page. If Reah reports expired browser signing access or REAUTH_REQUIRED, sign in to the Reah website again with email verification or Passkey, then reopen this registration page. Do not replace the MCP connection to fix a browser session."
 
 type connectionError struct{ Code, Message string }
 
@@ -120,7 +120,7 @@ func (o *OAuth) ResumeRegistration(ctx context.Context, progress func(LoginStep)
 	q := u.Query()
 	q.Set("connectionId", connectionID)
 	u.RawQuery = q.Encode()
-	return progress(LoginStep{"credential_registration_required", registrationInstructions, u.String()})
+	return progress(LoginStep{"credential_registration_required", registrationInstructions, u.String(), false})
 }
 
 // CheckStatus performs only authenticated reads, plus automatic OAuth refresh.

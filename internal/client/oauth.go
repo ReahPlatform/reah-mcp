@@ -125,7 +125,7 @@ func (o *OAuth) discover(ctx context.Context, enroll bool) (string, error) {
 	}
 	page := stringAt(m, "reah_credential_registration_uri")
 	u, e := url.Parse(page)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "/mcp/credentials" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+	if e != nil || u.Scheme != "https" || u.Host == "" || u.Scheme+"://"+u.Host != o.Config.Origin || u.User != nil || u.Path != "/mcp/credentials" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return "", errors.New("invalid Reah credential registration page")
 	}
 	return page, nil
@@ -189,7 +189,7 @@ func (o *OAuth) Login(ctx context.Context, enroll bool, open func(string) error)
 // LoginWithPolicyProfile always creates new consent; it never upgrades a grant.
 func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile string, open func(string) error) error {
 	return o.LoginWithProgress(ctx, enroll, profile, func(step LoginStep) error {
-		if step.URL != "" {
+		if step.URL != "" && !step.BrowserContinuation {
 			return open(step.URL)
 		}
 		return nil
@@ -199,9 +199,10 @@ func (o *OAuth) LoginWithPolicyProfile(ctx context.Context, enroll bool, profile
 // LoginStep distinguishes browser consent from provider credential registration.
 // URLs are private continuation links; do not include them in shared logs.
 type LoginStep struct {
-	Stage   string `json:"stage"`
-	Message string `json:"message"`
-	URL     string `json:"url,omitempty"`
+	Stage               string `json:"stage"`
+	Message             string `json:"message"`
+	URL                 string `json:"url,omitempty"`
+	BrowserContinuation bool   `json:"browserContinuation,omitempty"`
 }
 
 func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile string, progress func(LoginStep) error) error {
@@ -269,7 +270,7 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 			q.Set("credential_public_key", s.DeviceKey.PublicKey)
 		}
 		u.RawQuery = q.Encode()
-		if e = progress(LoginStep{"oauth_consent_required", "Sign in to Reah, select businesses and duration, and authorize. Keep this command running for the callback. A new login replaces this profile's previous connection.", u.String()}); e != nil {
+		if e = progress(LoginStep{"oauth_consent_required", "Sign in to Reah, select businesses and duration, and authorize. Keep this command running for the callback. A new login replaces this profile's previous connection.", u.String(), false}); e != nil {
 			return e
 		}
 		var callback callbackResult
@@ -279,38 +280,45 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 			return errors.New("authorization timed out or was cancelled; start a new login")
 		}
 		if callback.code == "" {
-			callback.finish(false)
+			callback.finish(false, "")
 			return errors.New("Reah authorization was declined")
 		}
 		d, e := o.request(ctx, "/mcp/oauth/token", url.Values{"grant_type": {"authorization_code"}, "client_id": {s.ClientID}, "resource": {o.Config.Server}, "code": {callback.code}, "code_verifier": {verifier}, "redirect_uri": {listener.redirect}}, "")
 		if e != nil {
-			callback.finish(false)
+			callback.finish(false, "")
 			return e
 		}
 		s.Tokens, e = parseTokens(d)
 		if e != nil {
-			callback.finish(false)
+			callback.finish(false, "")
 			return e
 		}
 		if e = o.Store.Write(s); e != nil {
-			callback.finish(false)
+			callback.finish(false, "")
 			return e
 		}
-		callback.finish(true)
-		if e = progress(LoginStep{"oauth_connected", "OAuth credentials are saved. This alone does not enable financial signing.", ""}); e != nil {
+		if e = progress(LoginStep{"oauth_connected", "OAuth credentials are saved. This alone does not enable financial signing.", "", false}); e != nil {
+			callback.finish(true, "")
 			return e
 		}
 		if !enroll {
+			callback.finish(true, "")
 			return nil
 		}
 		if e = o.prepareKey(ctx, s); e != nil {
+			// Read access is already saved. Do not invite a replacement login.
+			callback.finish(true, "")
 			return e
 		}
 		u, _ = url.Parse(page)
 		q = u.Query()
 		q.Set("connectionId", s.Enrollment.ConnectionID)
 		u.RawQuery = q.Encode()
-		return progress(LoginStep{"credential_registration_required", registrationInstructions, u.String()})
+		// Continue in the original browser tab only after token storage and key
+		// proof succeed. The destination is fixed by validated discovery, never
+		// callback parameters. No token or private key enters the redirect.
+		callback.finish(true, u.String())
+		return progress(LoginStep{"credential_registration_required", "Read access is connected. Continue optional financial registration in the same browser tab. No signing authority is granted until you explicitly confirm it. If that tab is closed, reopen this private URL.", u.String(), true})
 	})
 }
 func (o *OAuth) Logout(ctx context.Context) error {
@@ -381,7 +389,7 @@ func (o *OAuth) Status(ctx context.Context) (document, error) {
 
 type callbackResult struct {
 	code   string
-	finish func(bool)
+	finish func(bool, string)
 }
 type callback struct {
 	redirect string
@@ -422,11 +430,23 @@ func newCallback(ctx context.Context, path, state, issuer string) (*callback, er
 		}
 		used = true
 		mu.Unlock()
-		finished := make(chan bool, 1)
-		result <- callbackResult{q.Get("code"), func(ok bool) { finished <- ok }}
+		type completion struct {
+			ok           bool
+			continuation string
+		}
+		finished := make(chan completion, 1)
+		result <- callbackResult{q.Get("code"), func(ok bool, continuation string) { finished <- completion{ok, continuation} }}
 		select {
-		case ok := <-finished:
-			if ok {
+		case outcome := <-finished:
+			if outcome.ok && outcome.continuation != "" {
+				u, err := url.Parse(outcome.continuation)
+				origin, _ := url.Parse(issuer)
+				if err != nil || u.Scheme != "https" || u.Host != origin.Host || u.User != nil || u.Path != "/mcp/credentials" || u.Fragment != "" || !validUUID(u.Query().Get("connectionId")) || len(u.Query()) != 1 || len(u.Query()["connectionId"]) != 1 {
+					http.Error(w, "Registration continuation unavailable. Inspect client status.", 400)
+					return
+				}
+				http.Redirect(w, r, u.String(), http.StatusSeeOther)
+			} else if outcome.ok {
 				_, _ = io.WriteString(w, "Authentication complete. You may close this window.")
 			} else {
 				http.Error(w, "Authorization could not be completed. Start a new login.", 400)

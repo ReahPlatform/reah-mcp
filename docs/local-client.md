@@ -55,11 +55,16 @@ copied into the local client.
 For an Agent coordinating login, use `login --no-browser --json`. Output is
 newline-delimited JSON with named stages: `oauth_consent_required` contains the
 OAuth URL; `oauth_connected` confirms token storage. If `--enroll-key` was
-requested, a **second** `credential_registration_required` stage contains the
-credential registration URL. Open each URL for the user at its corresponding
-stage. Keep the login command running until the OAuth callback completes.
-Continuation URLs are private; do not post them in issues, shared transcripts or
-logs. `--no-browser` suppresses automatic browser launching, not the second step.
+requested, `credential_registration_required` contains a recovery URL and
+`browserContinuation: true`: after PKCE exchange, token storage and local key
+proof, the original browser tab continues directly to optional financial access.
+Do not open another tab for that event unless the original tab was closed or
+navigation failed. Resume with `enroll-key` if needed; its event has no automatic
+browser continuation. Keep the login command running until the OAuth callback
+completes. Continuation URLs are private; never post them in shared logs.
+Reads and financial operations use this same stdio MCP connection; do not add a
+second hosted server just for reads. Read access remains usable if financial
+registration is skipped or fails.
 The final `local_status` event is saved progress, not proof of financial readiness.
 If automatic browser launching fails, the printed URL remains usable while the
 command waits; starting another login is unnecessary.
