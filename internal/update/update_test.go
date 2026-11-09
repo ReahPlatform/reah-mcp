@@ -138,7 +138,7 @@ func newFixture(t *testing.T) *fixture {
 		}
 	})
 	var err error
-	f.manager, err = New(Config{Version: "v1.0.0", ManifestURL: server.URL + "/update.json", PublicKey: base64.StdEncoding.EncodeToString(public), Directory: t.TempDir(), HTTPClient: server.Client()})
+	f.manager, err = New(Config{Version: "v1.0.0", ManifestURL: server.URL + "/update.json", PublicKey: base64.StdEncoding.EncodeToString(public), Directory: filepath.Join(t.TempDir(), "updates"), HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
