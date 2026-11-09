@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      REAH_MCP_UPDATE_URL: https://github.com/ReahPlatform/reah-mcp/releases/latest/download/update.json
+      REAH_MCP_UPDATE_PUBLIC_KEY: ${{ vars.REAH_MCP_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,7 +46,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: make lint test build
+      - name: Require update trust root
+        run: test -n "$REAH_MCP_UPDATE_PUBLIC_KEY"
       - run: make release-go VERSION="$RELEASE_TAG"
+      - name: Sign update manifest
+        run: go run scripts/sign_update.go "dist/go/$RELEASE_TAG"
+        env:
+          REAH_MCP_UPDATE_SIGNING_SEED: ${{ secrets.REAH_MCP_UPDATE_SIGNING_SEED }}
       - uses: actions/upload-artifact@v4
         with:
           name: go-client
