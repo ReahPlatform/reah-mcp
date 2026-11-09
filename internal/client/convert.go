@@ -13,7 +13,7 @@ import (
 // The financial protocol contains several intent families. Select the supported
 // shape from the authenticated schema, never from a compiled business-tool name.
 var convertRequired = []string{"entityId", "originInstrumentAccountId", "destinationInstrumentId", "amount", "executionConstraint", "gasSource", "amountMode"}
-var convertFields = append(append([]string{}, convertRequired...), "destinationAddress", "notes", "quoteSource", "requestedTargetAmount", "initialQuoteId", "balanceSource", "pointsPreference", "pointsQuoteToken", "idempotencyKey")
+var convertFields = append(append([]string{}, convertRequired...), "destinationAddress", "notes", "quoteSource", "requestedTargetAmount", "initialQuoteId", "balanceSource", "smartBalanceVaultId", "pointsPreference", "pointsQuoteToken", "idempotencyKey")
 var convertContextFields = []string{"requestId", "originNetworkId", "destinationNetworkId", "sourceAsset", "destinationAsset", "originTokenAddress", "destinationTokenAddress", "originAddress", "sourceDecimals", "destinationDecimals"}
 
 func convertSchema(schema document) bool {
@@ -155,7 +155,11 @@ func convertIntent(key DeviceKey, c SigningContext, args document, now time.Time
 	if mode != "EXACT_INPUT" && mode != "MINIMUM_OUTPUT" || mode == "EXACT_INPUT" && stringAt(body, "requestedTargetAmount") != "" || mode == "MINIMUM_OUTPUT" && stringAt(body, "requestedTargetAmount") != floor {
 		return nil, nil, bad
 	}
-	if v, ok := body["balanceSource"]; ok && v != "WALLET" || stringAt(body, "pointsQuoteToken") != "" || stringAt(body, "pointsPreference") != "" && body["pointsPreference"] != "NONE" {
+	source, vault := stringAt(body, "balanceSource"), stringAt(body, "smartBalanceVaultId")
+	if source == "" {
+		source = "WALLET"
+	}
+	if source != "WALLET" && source != "SMART_BALANCE" || source == "WALLET" && vault != "" || source == "SMART_BALANCE" && !validUUID(vault) || stringAt(body, "pointsQuoteToken") != "" || stringAt(body, "pointsPreference") != "" && body["pointsPreference"] != "NONE" {
 		return nil, nil, bad
 	}
 	gas := "from_wallet"
@@ -169,6 +173,9 @@ func convertIntent(key DeviceKey, c SigningContext, args document, now time.Time
 	if sourceChain == "" || destinationChain == "" || strings.EqualFold(stringAt(context, "sourceAsset"), stringAt(context, "destinationAsset")) || (sourceChain == destinationChain) != (context["originNetworkId"] == context["destinationNetworkId"]) {
 		return nil, nil, bad
 	}
+	if source == "SMART_BALANCE" && (mode != "EXACT_INPUT" || (sourceChain != "1" && sourceChain != "8453") || destinationChain != "4217" || stringAt(context, "originTokenAddress") == "" || stringAt(context, "destinationTokenAddress") == "") {
+		return nil, nil, errors.New("Smart Balance conversion requires exact-input ERC-20 funding from Ethereum/Base to Tempo; verify the owned synchronous ERC-4626/allocator route before quoting")
+	}
 	for _, address := range []string{stringAt(context, "originAddress"), stringAt(body, "destinationAddress")} {
 		if !evmAddress.MatchString(address) || strings.EqualFold(address, "0x0000000000000000000000000000000000000000") {
 			return nil, nil, bad
@@ -178,8 +185,8 @@ func convertIntent(key DeviceKey, c SigningContext, args document, now time.Time
 	if len(notes) > 4096 || strings.ContainsRune(notes, '\x00') || notes != strings.TrimSpace(notes) {
 		return nil, nil, bad
 	}
-	d := document{"v": 4, "balanceSource": "BALANCE_SOURCE_WALLET", "amountMode": strings.ToLower(mode), "gasSource": gas, "executionConstraint": constraint}
-	for _, name := range []string{"originInstrumentAccountId", "destinationInstrumentId", "amount", "destinationAddress", "requestedTargetAmount", "notes"} {
+	d := document{"v": 4, "balanceSource": "BALANCE_SOURCE_" + source, "amountMode": strings.ToLower(mode), "gasSource": gas, "executionConstraint": constraint}
+	for _, name := range []string{"originInstrumentAccountId", "destinationInstrumentId", "amount", "destinationAddress", "requestedTargetAmount", "notes", "smartBalanceVaultId"} {
 		if value, ok := body[name]; ok {
 			d[name] = value
 		}

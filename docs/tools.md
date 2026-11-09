@@ -87,3 +87,16 @@ exists. Use settled movements, not party metadata, for monetary totals.
 
 Statement export tools are not exposed. Existing Web statement features are
 separate from this MCP catalog.
+
+## Financial USD preparation
+
+On a compatible signed Gateway, `reah_get_usd_withdrawal_context` reads exact
+account/rail `settlementAddress`, `targetInstrumentId` and
+`approvalDetailsVersion` from Ledger's canonical USD request derivation. The
+legacy target can differ from Banking settlement backing. Copy the version into
+signed details `v`; unsupported/provider-neutral routes stop without an approval.
+`reah_get_contact_bank_metadata` resolves an exact owned saved contact/account
+and ACH/Fedwire rail into normalized USD `recipientTerms`, including both
+addresses and stored holder names/classification. Both tools require an existing
+financial credential and use the authenticated live catalog; hosted read-only
+connections do not gain these tools or execution authority.
