@@ -43,10 +43,11 @@ Supported signing formats:
   round retains the original entity, approval and business. No arbitrary signing,
   automatic submission retries, or loops until settlement are provided.
 
-- `approval-financial-v1`: the supported input shape is wallet crypto conversion
+- `approval-financial-v1`: the supported input shape is Wallet/Smart Balance crypto conversion
   through Web-compatible v4 intents. Both same-chain swaps and cross-chain EVM
-  converts support `EXACT_INPUT` and `MINIMUM_OUTPUT`. Bank, Points, Smart Balance,
-  scheduled and `EXACT_OUTPUT` intent families remain unsupported. Capability
+  converts support `EXACT_INPUT` and `MINIMUM_OUTPUT`. Points, scheduled and `EXACT_OUTPUT` intent families remain unsupported.
+  Smart Balance uses explicit `balanceSource=SMART_BALANCE` and an owned
+  `smartBalanceVaultId`; absence means Wallet and never an automatic fallback. Capability
   selection uses the authenticated schema, not a business-tool name allowlist.
 
 The conversion schema adds a local-only `convertContext`: stable UUID `requestId`,
@@ -132,6 +133,53 @@ This bank path trusts Ledger's transaction semantics as Web does. It neither
 changes existing Ledger quotes nor claims independent constructed-transaction
 comparison or original-attempt binding. Wallet and convert guards remain
 separate. Client support does not establish deployment, actual execution or
-settlement. External fiat/USD payouts and bank-paid internal gas are unsupported.
+settlement. This adapter does not cover bank-paid internal gas. USD payouts use
+the distinct protocol below; other fiat shapes remain unsupported locally.
 Schemas, mappings and preparation stay local in the client; no remote templates
 or server-preparation RPC are used.
+
+
+### USD and Smart Balance protocols
+
+`approval-usd-withdraw-v1`, `approval-smart-add-v1` and
+`approval-smart-withdraw-v1` select distinct strict input adapters, independent
+of business tool names. All require a live `financial-operations-v1` credential.
+The local-only `financialContext` contains a stable UUID `requestId` and
+`approvalDetailsJson` (protobuf `ApprovalDetails` JSON, never provider bytes).
+Unknown fields, direction changes and mismatched business terms are rejected.
+The context is removed before dispatch; the exact generated intent and every
+submitted business field enter the operation proof. The local write catalog
+filters out request/execution adapters this binary cannot expose.
+
+For Add/Withdraw, obtain `approvalDetailsJson` from the matching
+`reah_quote_add_smart_balance` / `reah_quote_withdraw_smart_balance` result. Replay
+its normalized `assetAmount` in underlying major units, owned wallet/vault,
+instrument account, network/instrument and three Treasury account IDs. The
+client signs v1 of the matching oneof, explicit gas payer and submitted notes.
+Gas estimates are advisory and are not frozen into the signed terms. These
+preparations can provision the wallet-attached hierarchy and have no quote
+ID/expiry. Check `depositEnabled`/`redeemEnabled`, freshness, principal and gas
+balances before requesting approval. `totalBalance` overlaps Wallet and Smart
+Balance; never add all three. Add and Withdraw retain opposite directions.
+
+For USD, the context additionally requires `targetInstrumentId` and
+`settlementAddress` from verified Banking settlement/rail metadata. Supply the
+complete v1/v2 `bankingUsdWithdrawal` details using those identities, a positive
+integer USD-cent amount, lowercase rail, resolved bank/holder names, account
+number/type, routing number, both addresses and any saved contact IDs. Manual
+recipients must match every submitted bank/address field; saved recipients
+must match the verified contact and bank-account IDs. Use the resolved holder
+classification and names from the current business API, not inferred defaults.
+Missing route or recipient metadata means unavailable, not permission to guess.
+The settlement address is a destination, not custody signing authority.
+
+Gateway compares the signed terms against its private original canonical
+approval before binding Ledger's returned raw request IDs. USD and Smart-funded
+send use one immutable signer group; Add/Withdraw permit at most two groups
+with distinct approval slots. Hodor authenticates the exact original intent,
+live financial credential, Conductor execution authorization and provider body,
+and retains the existing quota, journal and unknown-outcome fences. This is the
+Web trust boundary: Ledger constructs raw business transactions; the client
+does not reconstruct raw digests. Reconcile the original approval after any
+unknown outcome. These protocols require coordinated Gateway/Hodor/Ledger
+versions and do not establish deployment or successful provider settlement.

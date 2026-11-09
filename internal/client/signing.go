@@ -79,7 +79,7 @@ func operationProof(key DeviceKey, c SigningContext, name string, args document)
 	return document{"payload": string(p), "signature": sig}, e
 }
 
-var transferFields = []string{"entityId", "requestId", "instrumentAccountId", "walletId", "networkId", "instrumentId", "fromAddress", "toAddress", "amount", "asset", "gasSource", "memo", "notes"}
+var transferFields = []string{"balanceSource", "smartBalanceVaultId", "entityId", "requestId", "instrumentAccountId", "walletId", "networkId", "instrumentId", "fromAddress", "toAddress", "amount", "asset", "gasSource", "memo", "notes"}
 
 func transferIntent(key DeviceKey, c SigningContext, a document, now time.Time) (document, error) {
 	allowed := make(map[string]bool)
@@ -92,7 +92,7 @@ func transferIntent(key DeviceKey, c SigningContext, a document, now time.Time) 
 		}
 	}
 	for _, k := range transferFields {
-		if k != "memo" && k != "notes" && stringAt(a, k) == "" {
+		if k != "memo" && k != "notes" && k != "balanceSource" && k != "smartBalanceVaultId" && stringAt(a, k) == "" {
 			return nil, fmt.Errorf("missing transfer field: %s", k)
 		}
 	}
@@ -104,9 +104,16 @@ func transferIntent(key DeviceKey, c SigningContext, a document, now time.Time) 
 	if !regexp.MustCompile(`^[1-9][0-9]{0,77}$`).MatchString(stringAt(a, "amount")) || (a["gasSource"] != "GAS_SOURCE_FROM_WALLET" && a["gasSource"] != "GAS_SOURCE_GAS_STATION") || len(stringAt(a, "memo")) > 1024 || len(stringAt(a, "notes")) > 4096 {
 		return nil, errors.New("use a positive minor-unit integer amount and explicitly select wallet or Gas Station gas")
 	}
-	d := document{"v": 2, "balanceSource": "BALANCE_SOURCE_WALLET"}
+	source, vault := stringAt(a, "balanceSource"), stringAt(a, "smartBalanceVaultId")
+	if source == "" {
+		source = "WALLET"
+	}
+	if source != "WALLET" && source != "SMART_BALANCE" || source == "WALLET" && vault != "" || source == "SMART_BALANCE" && (!validUUID(vault) || c.Binding.PolicyProfile != "financial-operations-v1") {
+		return nil, errors.New("Smart Balance requires a financial credential and an exact owned vault; wallet credentials cannot be upgraded locally")
+	}
+	d := document{"v": 2, "balanceSource": "BALANCE_SOURCE_" + source}
 	for _, k := range transferFields {
-		if k != "entityId" && k != "requestId" {
+		if k != "entityId" && k != "requestId" && k != "balanceSource" {
 			if v, ok := a[k]; ok {
 				d[k] = v
 			}

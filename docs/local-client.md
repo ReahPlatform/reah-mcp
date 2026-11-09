@@ -92,12 +92,14 @@ local protocol through tool `_meta`. Unknown protocol versions are hidden rather
 than being forwarded unsigned. The supported signing formats are wallet transfer intents (`approval-send-v2`)
 and verified execution continuations (`turnkey-execution-v1`). The Go adapter
 also preserves the optional financial `business` discriminator on execution.
-The `approval-financial-v1` adapter additionally supports EVM wallet swaps and
+The `approval-financial-v1` adapter additionally supports EVM Wallet/Smart Balance swaps and
 cross-chain crypto converts using v4 intents, in exact-input or minimum-output
 mode, plus existing asset-absent Banking internal Send v1 quotes paid by Gas
 Station and Web-equivalent bank execution through compatible Gateway/Hodor
-servers. External bank payouts, bank-paid internal gas, Points, Smart Balance,
-scheduled and exact-output shapes remain closed. A new tool using an already supported
+servers. Distinct adapters also support USD ACH/Fedwire withdrawals and owned
+Smart Balance Add/Withdraw. Smart Balance-funded transfers require the financial
+profile and an exact vault ID. Bank-paid internal gas, Points, scheduled and
+exact-output shapes remain closed. A new tool using an already supported
 format does not require a local release.
 
 The local client retains OAuth, OS credential storage, exact intent construction,

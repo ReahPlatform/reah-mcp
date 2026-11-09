@@ -33,7 +33,7 @@ func localProtocol(t *mcp.Tool) (protocol, bool) {
 	if p.Mode == "internal" || p.Mode == "proxy" {
 		return p, true
 	}
-	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "approval-financial-v1", "turnkey-execution-v1"}, p.Signing) {
+	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "approval-financial-v1", "turnkey-execution-v1", "approval-smart-add-v1", "approval-smart-withdraw-v1", "approval-usd-withdraw-v1"}, p.Signing) {
 		return p, true
 	}
 	return protocol{}, true
@@ -73,6 +73,9 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			out = append(out, t)
 			continue
 		}
+		if isNewFinancialProtocol(p.Signing) && !newFinancialSchema(schema, p.Signing) {
+			continue
+		}
 		if p.Signing == "approval-financial-v1" && !convertSchema(schema) && !bankTransferSchema(schema) {
 			continue
 		}
@@ -93,12 +96,15 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			schema["required"] = kept
 		}
 		copy := *t
-		if p.Signing == "approval-financial-v1" && bankTransferSchema(schema) {
+		if isNewFinancialProtocol(p.Signing) {
+			addFinancialContext(schema, p.Signing)
+			copy.Description += " Local signing requires a financial-operations-v1 credential, a stable requestId, exact owned account context and explicit terms. Approval creation never approves or proves execution or settlement. Unknown outcomes require reconciliation of the original approval, without automatic replacement."
+		} else if p.Signing == "approval-financial-v1" && bankTransferSchema(schema) {
 			addBankTransferContext(schema)
 			copy.Description += " Local adapter supports existing Banking internal Send v1 quotes paid by Gas Station. Supply bankTransferContext from the exact fresh quote and independently verified owned ERC20 Banking settlement metadata. The signed quote retains its existing UUID identities without an asset field; local metadata is not added to the signature. Preserve requestId and frozen approvalDetailsJson. Requires explicit financial-operations-v1 registration. Check actual available Banking funds and Gas Station balance separately. Bank internal execution requires a compatible Gateway advertising that business and Hodor acknowledging its private exact-request binding. This Web-equivalent bank route trusts Ledger transaction semantics; wallet and convert construction checks remain separate. Approval creation never approves, executes or proves settlement."
 		} else if p.Signing == "approval-financial-v1" {
 			addConvertContext(schema)
-			copy.Description += " Local adapter supports EVM wallet crypto conversion (same-chain swap or cross-chain convert), exact-input and minimum-output only, without Points. Supply convertContext from independently verified account/network/instrument reads, explicit destinationAddress, authoritative asset decimals and CAIP-19 identities. Context is local-only and is bound into a v4 approval intent. Preserve its stable requestId. Obtain a fresh quote and check principal plus selected gas balance before submitting; use a positive minimumReceive at destination precision. This requires explicit financial-operations-v1 registration; wallet-only credentials cannot convert."
+			copy.Description += " Local adapter supports EVM Wallet or Smart Balance crypto conversion (same-chain swap or cross-chain convert), exact-input and minimum-output only, without Points. Supply convertContext from independently verified account/network/instrument reads, explicit destinationAddress, authoritative asset decimals and CAIP-19 identities. Context is local-only and is bound into a v4 approval intent. Preserve its stable requestId. For SMART_BALANCE retain the exact owned smartBalanceVaultId, require redeemEnabled and check smartBalance for principal, with Wallet/Gas Station gas funded separately. Obtain a fresh quote and check principal plus selected gas balance before submitting; use a positive minimumReceive at destination precision. This requires explicit financial-operations-v1 registration; wallet-only credentials cannot convert."
 		}
 		copy.InputSchema = schema
 		out = append(out, &copy)
@@ -232,7 +238,11 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 	}
 	p, _ := localProtocol(tool)
 	if p.Mode != "signed" {
-		return r.invoke(ctx, name, args)
+		result, err := r.invoke(ctx, name, args)
+		if err == nil && name == "reah_catalog" && result != nil && !result.IsError {
+			return filterLocalWriteCatalog(result, tools)
+		}
+		return result, err
 	}
 	if p.Signing == "turnkey-execution-v1" && args["business"] == "bank_internal_transfer" && !advertisesBankExecution(tool) {
 		return nil, errors.New("Banking execution is unavailable in the authenticated Gateway catalog; use the existing human flow")
@@ -271,10 +281,10 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		if !validUUID(stringAt(args, "approvalId")) {
 			return nil, errors.New("execution requires the original approvalId")
 		}
-		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal", "bank_internal_transfer"}, b) {
+		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal", "bank_internal_transfer", "banking_usd_withdrawal", "add_smart_balance", "withdraw_smart_balance"}, b) {
 			return nil, errors.New("unsupported financial execution business")
 		}
-	} else if format != "approval-send-v2" && format != "approval-financial-v1" {
+	} else if format != "approval-send-v2" && format != "approval-financial-v1" && !isNewFinancialProtocol(format) {
 		return nil, errors.New("unsupported local signing protocol")
 	}
 	contextResult, e := call(ctx, "reah_signing_context", document{"entityId": args["entityId"]})
@@ -300,6 +310,14 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 			return nil, errors.New("operation outcome is unconfirmed; inspect the original requestId or approvalId before retrying; do not create a replacement")
 		}
 		return out, nil
+	}
+	if isNewFinancialProtocol(format) {
+		intent, body, err := newFinancialIntent(key, c, args, format, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		body["requestSignature"] = intent
+		return submit(body)
 	}
 	if format == "approval-financial-v1" {
 		var intent, body document
