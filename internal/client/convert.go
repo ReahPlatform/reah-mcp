@@ -173,6 +173,9 @@ func convertIntent(key DeviceKey, c SigningContext, args document, now time.Time
 	if sourceChain == "" || destinationChain == "" || strings.EqualFold(stringAt(context, "sourceAsset"), stringAt(context, "destinationAsset")) || (sourceChain == destinationChain) != (context["originNetworkId"] == context["destinationNetworkId"]) {
 		return nil, nil, bad
 	}
+	if source == "SMART_BALANCE" && (mode != "EXACT_INPUT" || (sourceChain != "1" && sourceChain != "8453") || destinationChain != "4217" || stringAt(context, "originTokenAddress") == "" || stringAt(context, "destinationTokenAddress") == "") {
+		return nil, nil, errors.New("Smart Balance conversion requires exact-input ERC-20 funding from Ethereum/Base to Tempo; verify the owned synchronous ERC-4626/allocator route before quoting")
+	}
 	for _, address := range []string{stringAt(context, "originAddress"), stringAt(body, "destinationAddress")} {
 		if !evmAddress.MatchString(address) || strings.EqualFold(address, "0x0000000000000000000000000000000000000000") {
 			return nil, nil, bad

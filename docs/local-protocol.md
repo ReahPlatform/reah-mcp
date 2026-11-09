@@ -44,8 +44,11 @@ Supported signing formats:
   automatic submission retries, or loops until settlement are provided.
 
 - `approval-financial-v1`: the supported input shape is Wallet/Smart Balance crypto conversion
-  through Web-compatible v4 intents. Both same-chain swaps and cross-chain EVM
-  converts support `EXACT_INPUT` and `MINIMUM_OUTPUT`. Points, scheduled and `EXACT_OUTPUT` intent families remain unsupported.
+  through Web-compatible v4 intents. Wallet same-chain swaps and cross-chain EVM
+  converts support `EXACT_INPUT` and `MINIMUM_OUTPUT`. Smart Balance supports
+  `EXACT_INPUT` ERC-20 funding from Ethereum/Base to Tempo only, with a verified
+  owned synchronous ERC-4626/allocator vault; no Smart same-chain swap,
+  `MINIMUM_OUTPUT` or `EXACT_OUTPUT`. Points, scheduled and `EXACT_OUTPUT` intent families remain unsupported.
   Smart Balance uses explicit `balanceSource=SMART_BALANCE` and an owned
   `smartBalanceVaultId`; absence means Wallet and never an automatic fallback. Capability
   selection uses the authenticated schema, not a business-tool name allowlist.
@@ -163,19 +166,24 @@ balances before requesting approval. `totalBalance` overlaps Wallet and Smart
 Balance; never add all three. Add and Withdraw retain opposite directions.
 
 For USD, the context additionally requires `targetInstrumentId` and
-`settlementAddress` from verified Banking settlement/rail metadata. Supply the
-complete v1/v2 `bankingUsdWithdrawal` details using those identities, a positive
+`settlementAddress` from `reah_get_usd_withdrawal_context` for the exact account
+and ACH/Fedwire rail. Copy its `approvalDetailsVersion` into details `v`; the
+legacy Dakota target may differ from Banking settlement backing, so
+`reah_get_bank_account_metadata` is not a substitute. Supply the complete v1/v2 `bankingUsdWithdrawal` details using those identities, a positive
 integer USD-cent amount, lowercase rail, resolved bank/holder names, account
 number/type, routing number, both addresses and any saved contact IDs. Manual
 recipients must match every submitted bank/address field; saved recipients
-must match the verified contact and bank-account IDs. Use the resolved holder
-classification and names from the current business API, not inferred defaults.
+must match the verified contact and bank-account IDs. Obtain normalized saved
+`recipientTerms` from `reah_get_contact_bank_metadata` for the exact contact,
+bank-account and rail. Copy these terms unchanged, including both addresses,
+holder classification and stored first/last names. Never substitute Contact.name
+or infer holder type from Contact.type; the Gateway mirrors Ledger normalization.
 Missing route or recipient metadata means unavailable, not permission to guess.
 The settlement address is a destination, not custody signing authority.
 
 Gateway compares the signed terms against its private original canonical
-approval before binding Ledger's returned raw request IDs. USD and Smart-funded
-send use one immutable signer group; Add/Withdraw permit at most two groups
+approval before binding Ledger's returned raw request IDs. USD uses one immutable signer group of at most 16 backing-source digests;
+Smart-funded send uses one immutable signer group; Add/Withdraw permit at most two groups
 with distinct approval slots. Hodor authenticates the exact original intent,
 live financial credential, Conductor execution authorization and provider body,
 and retains the existing quota, journal and unknown-outcome fences. This is the

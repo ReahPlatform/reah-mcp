@@ -80,6 +80,11 @@ func TestSmartBalanceConversionBindsVault(t *testing.T) {
 	args := convertArgs()
 	args["balanceSource"] = "SMART_BALANCE"
 	args["smartBalanceVaultId"] = testOtherID
+	context := args["convertContext"].(document)
+	context["sourceAsset"] = "eip155:8453/erc20:0x4444444444444444444444444444444444444444"
+	context["originTokenAddress"] = "0x4444444444444444444444444444444444444444"
+	context["destinationAsset"] = "eip155:4217/erc20:0x3333333333333333333333333333333333333333"
+	context["destinationNetworkId"] = testOtherID
 	intent, _, err := convertIntent(key, c, args, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +92,30 @@ func TestSmartBalanceConversionBindsVault(t *testing.T) {
 	text := signedDetailsText(t, intent)
 	if !strings.Contains(text, `"balanceSource":"BALANCE_SOURCE_SMART_BALANCE"`) || !strings.Contains(text, `"smartBalanceVaultId":"`+testOtherID+`"`) {
 		t.Fatal("funding bucket not signed")
+	}
+	for name, change := range map[string]func(document){
+		"minimum output": func(a document) { a["amountMode"] = "MINIMUM_OUTPUT"; a["requestedTargetAmount"] = "0.0025" },
+		"same chain": func(a document) {
+			c := a["convertContext"].(document)
+			c["destinationNetworkId"] = testID
+			c["destinationAsset"] = "eip155:8453/erc20:0x3333333333333333333333333333333333333333"
+		},
+		"unsupported source": func(a document) {
+			a["convertContext"].(document)["sourceAsset"] = "eip155:10/erc20:0x4444444444444444444444444444444444444444"
+		},
+		"native source": func(a document) {
+			c := a["convertContext"].(document)
+			c["sourceAsset"] = "eip155:8453/slip44:60"
+			c["originTokenAddress"] = ""
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneDocument(args)
+			change(candidate)
+			if _, _, err := convertIntent(key, c, candidate, time.Now()); err == nil {
+				t.Fatal("unsupported Smart route signed")
+			}
+		})
 	}
 	delete(args, "smartBalanceVaultId")
 	if _, _, err := convertIntent(key, c, args, time.Now()); err == nil {

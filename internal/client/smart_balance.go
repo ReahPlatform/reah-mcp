@@ -39,8 +39,8 @@ func addFinancialContext(schema document, protocol string) {
 	props := schema["properties"].(map[string]any)
 	fields := document{"requestId": document{"type": "string", "format": "uuid"}, "approvalDetailsJson": document{"type": "string", "maxLength": 32768, "description": "Exact Smart Balance quote account hierarchy, or complete resolved USD recipient intent from verified account/contact metadata. Never a provider payload."}}
 	if protocol == "approval-usd-withdraw-v1" {
-		fields["settlementAddress"] = document{"type": "string", "description": "Exact Banking settlement destination from reah_get_bank_account_metadata; never infer the source signer."}
-		fields["targetInstrumentId"] = document{"type": "string", "format": "uuid"}
+		fields["settlementAddress"] = document{"type": "string", "description": "Exact canonical settlement destination from reah_get_usd_withdrawal_context for this account/rail; never infer the source signer."}
+		fields["targetInstrumentId"] = document{"type": "string", "format": "uuid", "description": "Exact canonical target from reah_get_usd_withdrawal_context; it may differ from Banking settlement backing. Copy approvalDetailsVersion into the signed details v."}
 	}
 	required := []string{"requestId", "approvalDetailsJson"}
 	if protocol == "approval-usd-withdraw-v1" {
