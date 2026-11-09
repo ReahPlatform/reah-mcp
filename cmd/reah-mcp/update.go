@@ -22,11 +22,15 @@ func (e *delegatedExit) Error() string {
 }
 
 func addUpdates(root *cobra.Command) func([]string) error {
+	return addUpdatesWithConfig(root, update.Config{Version: root.Version, ManifestURL: updateManifestURL, PublicKey: updatePublicKey})
+}
+
+func addUpdatesWithConfig(root *cobra.Command, config update.Config) func([]string) error {
 	var disabled bool
 	pin := os.Getenv("REAH_MCP_VERSION")
 	root.PersistentFlags().BoolVar(&disabled, "no-auto-update", false, "Disable automatic downloads (already staged updates still apply)")
 	root.PersistentFlags().StringVar(&pin, "pin-version", pin, "Run this installed version and disable automatic downloads (or REAH_MCP_VERSION)")
-	manager, configErr := update.New(update.Config{Version: root.Version, ManifestURL: updateManifestURL, PublicKey: updatePublicKey})
+	manager, configErr := update.New(config)
 	var check bool
 	updateCmd := &cobra.Command{Use: "update", Short: "Verify and stage the latest signed stable release for the next start", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if configErr != nil {
@@ -83,11 +87,7 @@ func addUpdates(root *cobra.Command) func([]string) error {
 		}
 		path, err := manager.Select(selectedPin)
 		if err != nil {
-			if selectedPin != "" {
-				return err
-			}
-			fmt.Fprintf(root.ErrOrStderr(), "reah-mcp update: %v; using the current executable.\n", err)
-			return nil
+			return fmt.Errorf("cannot select a verified client release: %w; repair the update cache or explicitly pin an installed version", err)
 		}
 		if path != "" {
 			// A mispackaged release must fail instead of delegating to itself forever.

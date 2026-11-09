@@ -42,8 +42,8 @@ an Ed25519 verification key. During `serve`, the client checks at most once per
 24 hours, including failed attempts, downloads a newer stable version in the
 background, and verifies its signed metadata, SHA-256 digest and exact size.
 Checks run at startup and daily while the connection stays open, using a separate
-unauthenticated HTTPS client. Update failures are reported
-on stderr and do not interrupt MCP service. New sessions use the newest verified
+unauthenticated HTTPS client. Background download failures are reported
+on stderr and do not interrupt the running MCP service. New sessions use the newest verified
 cached version; running sessions keep their original executable. Reconnect the
 MCP connection to activate a downloaded update. The configured executable path
 stays the same on macOS, Linux and Windows.
@@ -71,7 +71,11 @@ across credential profiles within the current OS user account. Only executable
 files, signed public metadata, a timestamp and a lock are stored under the OS
 user configuration directory's `Reah/mcp-updates` folder. Credentials and signing
 keys remain in the OS credential store. Cached signatures and executable hashes
-are checked again before each launch. No operation is replayed if an updated
+are checked again before each launch. A cache integrity or activation error stops
+startup instead of falling back to an older executable. Repair the cache or
+manually install a verified release; an explicit `--pin-version` matching the
+original launcher or an intact cached release permits a deliberate rollback.
+No operation is replayed if an updated
 process fails.
 
 Downloaded releases cannot roll back the highest installed signed version.
