@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,7 +21,13 @@ import (
 var version = "dev"
 
 func command() *cobra.Command {
-	return commandWithOAuth(client.NewOAuth)
+	root, _ := startup()
+	return root
+}
+
+func startup() (*cobra.Command, func([]string) error) {
+	root := commandWithOAuth(client.NewOAuth)
+	return root, addUpdates(root)
 }
 
 func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command {
@@ -179,7 +186,16 @@ func openBrowser(parent context.Context, url string) error {
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	if err := command().ExecuteContext(ctx); err != nil {
+	root, launch := startup()
+	err := launch(os.Args[1:])
+	if err == nil {
+		err = root.ExecuteContext(ctx)
+	}
+	if err != nil {
+		var delegated *delegatedExit
+		if errors.As(err, &delegated) {
+			os.Exit(delegated.code)
+		}
 		fmt.Fprintln(os.Stderr, "reah-mcp:", err)
 		os.Exit(1)
 	}

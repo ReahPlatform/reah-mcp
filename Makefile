@@ -3,7 +3,7 @@
 VERSION ?= dev
 
 lint:
-	test -z "$$(gofmt -l cmd internal/client)"
+	test -z "$$(gofmt -l cmd internal)"
 	go vet ./...
 	python3 scripts/validate.py
 	git diff --check

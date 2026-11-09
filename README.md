@@ -24,7 +24,9 @@ expands the authorizing user’s existing permissions.
 The local client is written in Go and distributed as a standalone executable.
 It handles stdio MCP, OAuth, secure credential storage and local signing.
 Build from source or use a published GitHub binary release; no Node.js or npm
-runtime is required. See [local installation](docs/local-client.md).
+runtime is required. Official binary releases support signed automatic updates
+that activate on the next MCP connection. See [local installation](docs/local-client.md)
+and [release setup](docs/releases.md).
 
 ## Connect
 

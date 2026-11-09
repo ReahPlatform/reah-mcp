@@ -32,8 +32,60 @@ Maintainers can build six standalone archives for macOS, Linux and Windows
 (ARM64 and AMD64) with `make release-go VERSION=v0.1.0`. Once a checked GitHub
 release exists, users may download the matching archive, verify it against
 `SHA256SUMS`, unpack it and put `reah-mcp` on their PATH. Downloading a binary
-does not require Go. Private releases also require repository access. A public
-binary distribution would need a separate publishing decision.
+does not require Go. Private releases also require repository access. Automatic downloads become available when this repository and its releases
+are public; the updater does not send GitHub credentials or Reah OAuth tokens.
+
+## Automatic updates
+
+Official stable release binaries contain a fixed GitHub Releases update URL and
+an Ed25519 verification key. During `serve`, the client checks at most once per
+24 hours, including failed attempts, downloads a newer stable version in the
+background, and verifies its signed metadata, SHA-256 digest and exact size.
+Checks run at startup and daily while the connection stays open, using a separate
+unauthenticated HTTPS client. Background download failures are reported
+on stderr and do not interrupt the running MCP service. New sessions use the newest verified
+cached version; running sessions keep their original executable. Reconnect the
+MCP connection to activate a downloaded update. The configured executable path
+stays the same on macOS, Linux and Windows.
+
+```sh
+reah-mcp update --check     # Verify availability without downloading a binary
+reah-mcp update             # Stage the latest stable release for the next start
+reah-mcp serve --no-auto-update
+reah-mcp serve --pin-version v0.1.0
+```
+
+`REAH_MCP_AUTO_UPDATE=off` also disables background downloads. Already staged
+updates still apply. To freeze the running version, use `--pin-version` or
+`REAH_MCP_VERSION` with an exact installed stable version. A pin must match the
+launcher or a previously downloaded, verified release; an unavailable pin fails
+explicitly. Manual installation is required for versions never cached locally.
+Remove the pin before staging a new update. Source builds and `go install`
+builds do not embed the official update trust root and do not auto-update;
+install an official binary release to opt in.
+
+The original binary remains a launcher. It delegates before parsing commands,
+so `--version`, help, new CLI arguments and the version reported to the Gateway
+all come from the selected release. Updates are shared
+across credential profiles within the current OS user account. Only executable
+files, signed public metadata, a timestamp and a lock are stored under the OS
+user configuration directory's `Reah/mcp-updates` folder. Credentials and signing
+keys remain in the OS credential store. Cached signatures and executable hashes
+are checked again before each launch. A cache integrity or activation error stops
+startup instead of falling back to an older executable. Repair the cache or
+manually install a verified release; an explicit `--pin-version` matching the
+original launcher or an intact cached release permits a deliberate rollback.
+No operation is replayed if an updated
+process fails.
+
+Downloaded releases cannot roll back the highest installed signed version.
+Metadata expires after 30 days by default to bound replay of an old channel;
+an already installed authentic binary remains usable offline after metadata
+expiry. Uninstalling the cache also removes its rollback history. For an explicit
+rollback, pin a previously verified cached release. Cached executables are
+retained because another MCP session may still be running them. The update
+signing key is fixed in the launcher: key rotation requires a manually installed
+release. See [release setup](releases.md) for the signing and publishing steps.
 
 A desktop OS credential store is required: Keychain on macOS, an unlocked Secret
 Service session on Linux, or Credential Manager on Windows. There is no
