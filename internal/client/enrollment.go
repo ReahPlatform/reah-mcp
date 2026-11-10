@@ -60,7 +60,7 @@ func parseEnrollment(d document, c Config, s *Session) (*Receipt, string, error)
 			return nil, "", errEnrollment
 		}
 		var p document
-		fields := []string{"purpose", "resource", "clientId", "connectionId", "userId", "publicKey", "nonce", "enrollmentExpiresAt", "credentialExpiresAt", "targets"}
+		fields := []string{"purpose", "resource", "clientId", "connectionId", "userId", "publicKey", "nonce", "enrollmentExpiresAt", "credentialExpiresAt", "authorizationCreatedAt", "targets"}
 		if s.CredentialPolicyProfile == "financial-operations-v1" {
 			fields = append(fields, "policyProfile")
 		} else if s.CredentialPolicyProfile != "" && s.CredentialPolicyProfile != "wallet-transfer-v1" {
@@ -76,7 +76,10 @@ func parseEnrollment(d document, c Config, s *Session) (*Receipt, string, error)
 		}
 		pd, e1 := time.Parse(time.RFC3339Nano, stringAt(p, "enrollmentExpiresAt"))
 		pe, e2 := time.Parse(time.RFC3339Nano, stringAt(p, "credentialExpiresAt"))
-		if e1 != nil || e2 != nil || !pd.Equal(deadline) || !pe.Equal(expiry) {
+		created, e3 := time.Parse(time.RFC3339Nano, stringAt(p, "authorizationCreatedAt"))
+		// Financial authority ends at the original consent deadline, not a new
+		// lifetime measured from preparation or token refresh.
+		if e1 != nil || e2 != nil || e3 != nil || created.IsZero() || created.After(now) || !deadline.After(created) || !expiry.After(created) || expiry.After(created.Add(24*time.Hour)) || !pd.Equal(deadline) || !pe.Equal(expiry) {
 			return nil, "", errEnrollment
 		}
 		ts, ok := p["targets"].([]any)
