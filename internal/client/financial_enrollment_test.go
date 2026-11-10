@@ -71,7 +71,7 @@ func TestFinancialEnrollmentFrozenProofCannotBeReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Enrollment = r
-	for _, field := range []string{"policyProfile", "nonce", "userId"} {
+	for _, field := range []string{"policyProfile", "nonce", "userId", "authorizationCreatedAt"} {
 		t.Run(field, func(t *testing.T) {
 			copy := cloneDocument(d)
 			var proof document
@@ -85,6 +85,8 @@ func TestFinancialEnrollmentFrozenProofCannotBeReplaced(t *testing.T) {
 				proof[field] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 			case "userId":
 				proof[field] = testID
+			case "authorizationCreatedAt":
+				proof[field] = time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339Nano)
 			}
 			b, err := json.Marshal(proof)
 			if err != nil {
@@ -181,5 +183,60 @@ func TestFinancialEnrollmentRejectsInvalidLoginBeforeNetworkOrVaultChanges(t *te
 	}
 	if calls != 0 || store.s != s || s.CredentialPolicyProfile != "wallet-transfer-v1" {
 		t.Fatal("invalid profile touched network or existing authorization")
+	}
+}
+
+func TestEnrollmentRequiresOriginalAuthorizationWindow(t *testing.T) {
+	c, _ := Configure(DefaultServer, "authorization-window")
+	for _, profile := range []string{"wallet-transfer-v1", "financial-operations-v1"} {
+		t.Run(profile, func(t *testing.T) {
+			s := &Session{ClientID: "client", DeviceKey: testKey(t), CredentialPolicyProfile: profile}
+			var advertised any
+			if profile == "financial-operations-v1" {
+				advertised = profile
+			}
+			for _, name := range []string{"missing", "null", "invalid", "zero", "future", "extended", "exact-24h", "valid"} {
+				t.Run(name, func(t *testing.T) {
+					d := financialEnrollmentFixture(t, c, s, advertised)
+					var proof document
+					if err := json.Unmarshal([]byte(stringAt(d, "proof_payload")), &proof); err != nil {
+						t.Fatal(err)
+					}
+					expiry, err := time.Parse(time.RFC3339Nano, stringAt(d, "credential_expires_at"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					switch name {
+					case "missing":
+						delete(proof, "authorizationCreatedAt")
+					case "null":
+						proof["authorizationCreatedAt"] = nil
+					case "invalid":
+						proof["authorizationCreatedAt"] = "not-a-time"
+					case "zero":
+						proof["authorizationCreatedAt"] = time.Time{}.Format(time.RFC3339Nano)
+					case "future":
+						proof["authorizationCreatedAt"] = time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano)
+					case "extended":
+						proof["authorizationCreatedAt"] = expiry.Add(-24*time.Hour - time.Nanosecond).Format(time.RFC3339Nano)
+					case "exact-24h":
+						proof["authorizationCreatedAt"] = expiry.Add(-24 * time.Hour).Format(time.RFC3339Nano)
+					}
+					raw, err := json.Marshal(proof)
+					if err != nil {
+						t.Fatal(err)
+					}
+					d["proof_payload"] = string(raw)
+					_, payload, err := parseEnrollment(d, c, s)
+					want := name == "valid" || name == "exact-24h"
+					if (err == nil) != want {
+						t.Fatalf("acceptance = %v, want %v: %v", err == nil, want, err)
+					}
+					if want && payload != string(raw) {
+						t.Fatal("rewrote proof bytes before signing")
+					}
+				})
+			}
+		})
 	}
 }

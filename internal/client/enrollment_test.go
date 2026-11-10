@@ -21,7 +21,7 @@ func proofFixture(t *testing.T, c Config, s *Session) document {
 	now := time.Now()
 	deadline := now.Add(5 * time.Minute).UTC().Format(time.RFC3339Nano)
 	expiry := now.Add(time.Hour).UTC().Format(time.RFC3339Nano)
-	payload, _ := json.Marshal(document{"purpose": "reah.mcp.credential-possession.v1", "resource": c.Server, "clientId": s.ClientID, "connectionId": testID, "userId": testOtherID, "publicKey": s.DeviceKey.PublicKey, "nonce": strings.Repeat("a", 64), "enrollmentExpiresAt": deadline, "credentialExpiresAt": expiry, "targets": []any{document{"entityId": testID, "suborgId": testID, "authorizerTurnkeyUserId": testOtherID}, document{"entityId": testOtherID, "suborgId": testOtherID, "authorizerTurnkeyUserId": testOtherID}}})
+	payload, _ := json.Marshal(document{"purpose": "reah.mcp.credential-possession.v1", "resource": c.Server, "clientId": s.ClientID, "connectionId": testID, "userId": testOtherID, "publicKey": s.DeviceKey.PublicKey, "nonce": strings.Repeat("a", 64), "enrollmentExpiresAt": deadline, "credentialExpiresAt": expiry, "authorizationCreatedAt": now.Add(-time.Minute).UTC().Format(time.RFC3339Nano), "targets": []any{document{"entityId": testID, "suborgId": testID, "authorizerTurnkeyUserId": testOtherID}, document{"entityId": testOtherID, "suborgId": testOtherID, "authorizerTurnkeyUserId": testOtherID}}})
 	key, _ := hex.DecodeString(s.DeviceKey.PublicKey)
 	h := sha256.Sum256(key)
 	return document{"connection_id": testID, "public_key": s.DeviceKey.PublicKey, "public_key_fingerprint": hex.EncodeToString(h[:]), "entity_ids": []any{testID, testOtherID}, "state": "awaiting_key_proof", "proof_payload": string(payload), "enrollment_expires_at": deadline, "credential_expires_at": expiry}
