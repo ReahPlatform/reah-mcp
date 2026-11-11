@@ -197,3 +197,16 @@ versions and do not establish deployment or successful provider settlement.
 | Smart Balance | Existing owned synchronous vault hierarchy, exact source and explicit gas; no swap slippage for Add/Withdraw | Distinct Add/Withdraw direction and immutable signer groups; unsupported vaults/routes stay closed |
 
 Quote freshness is not settlement or available funds. Preserve real quote IDs and expiry when supplied (including internal Banking and Points). The normal Web convert review uses a 60-second refresh policy; this is not a provider expiry. Refresh a stale quote before asking for a new approval; never replace the original approval, request ID or signed terms when recovering an unknown outcome. Receipt references, bank payment references and notes are distinct; unsupported receipt/accounting fields must use the existing human flow.
+
+## Maintaining signing adapters
+
+`internal/client/signing_adapter.go` is the single registration point for each
+supported approval protocol's schema check, local context, signer and description.
+Discovery and submission resolve the same adapter; the existing `approvalIntent`,
+operation proof and execution continuation remain shared. Keep account/route/fee
+normalization in Gateway/Ledger and preserve each local adapter's explicit source,
+recipient, amount, direction and version checks. Server metadata cannot install a
+new signing format. A new tool using an existing supported contract needs no
+client tool-name entry; new financial semantics require an explicit adapter
+update. Unknown formats remain hidden. This changes no wire format or Web/App
+flow and does not expand the currently documented capability boundaries.

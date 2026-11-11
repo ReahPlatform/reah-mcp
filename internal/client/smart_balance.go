@@ -11,9 +11,6 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-func isNewFinancialProtocol(protocol string) bool {
-	return protocol == "approval-smart-add-v1" || protocol == "approval-smart-withdraw-v1" || protocol == "approval-usd-withdraw-v1"
-}
 func newFinancialFields(protocol string) []string {
 	if protocol == "approval-usd-withdraw-v1" {
 		return []string{"entityId", "bankingAccountId", "amountCents", "rail", "recipient", "notes"}
