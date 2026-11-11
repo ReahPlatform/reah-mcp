@@ -13,6 +13,10 @@ func publicKeyHex(_ key: P256.Signing.PublicKey) -> String {
 // CryptoKit's dataRepresentation is an opaque device-bound wrapped reference,
 // not an exported P-256 private scalar. It is persisted only in the OS vault.
 func handle(_ request: [String: String]) throws -> [String: String] {
+    if request["action"] == "availability" {
+        guard Set(request.keys) == ["action"] else { return ["error": "invalid_request"] }
+        return ["availability": SecureEnclave.isAvailable ? "available" : "unsupported"]
+    }
     guard SecureEnclave.isAvailable else { return ["error": "hardware_unavailable"] }
     let context = LAContext()
     context.interactionNotAllowed = true

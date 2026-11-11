@@ -206,12 +206,12 @@ type LoginStep struct {
 }
 
 func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile string, progress func(LoginStep) error) error {
-	return o.loginWithKeyGenerator(ctx, enroll, profile, generateStoredKey, progress)
+	return o.loginWithKeyGenerator(ctx, enroll, profile, generateLoginKey, progress)
 }
 
 // The generator is injected by protocol tests so they need no physical device.
-// Production always uses generateStoredKey and the platform's fixed policy.
-func (o *OAuth) loginWithKeyGenerator(ctx context.Context, enroll bool, profile string, generate func(string) (DeviceKey, error), progress func(LoginStep) error) error {
+// Production always uses generateLoginKey and native capability detection.
+func (o *OAuth) loginWithKeyGenerator(ctx context.Context, enroll bool, profile string, generate func(*Session) (DeviceKey, error), progress func(LoginStep) error) error {
 	if profile != "wallet-transfer-v1" && profile != "financial-operations-v1" || !enroll && profile != "wallet-transfer-v1" {
 		return errors.New("use a supported policy profile with --enroll-key for financial signing")
 	}
@@ -224,7 +224,7 @@ func (o *OAuth) loginWithKeyGenerator(ctx context.Context, enroll bool, profile 
 		if e != nil {
 			return e
 		}
-		key, e := generate(loginKeyStorage(runtime.GOOS, s))
+		key, e := generate(s)
 		if e != nil {
 			return e
 		}
@@ -322,13 +322,30 @@ func (o *OAuth) loginWithKeyGenerator(ctx context.Context, enroll bool, profile 
 	})
 }
 
-func loginKeyStorage(platform string, session *Session) string {
+func generateLoginKey(session *Session) (DeviceKey, error) {
+	storage, err := loginKeyStorage(runtime.GOOS, session, enclaveAvailable)
+	if err != nil {
+		return DeviceKey{}, err
+	}
+	return generateStoredKey(storage)
+}
+
+func loginKeyStorage(platform string, session *Session, available func() (bool, error)) (string, error) {
 	// Existing software grants remain usable until login creates fresh consent.
 	// Never downgrade a hardware profile copied to another OS into software.
-	if platform == "darwin" || session != nil && keyStorage(session.DeviceKey) == enclaveKeyStorage {
-		return enclaveKeyStorage
+	if session != nil && keyStorage(session.DeviceKey) == enclaveKeyStorage {
+		return enclaveKeyStorage, nil
 	}
-	return softwareKeyStorage
+	if platform == "darwin" {
+		supported, err := available()
+		if err != nil {
+			return "", err
+		}
+		if supported {
+			return enclaveKeyStorage, nil
+		}
+	}
+	return softwareKeyStorage, nil
 }
 func (o *OAuth) Logout(ctx context.Context) error {
 	return o.Store.Exclusive(ctx, func() error {

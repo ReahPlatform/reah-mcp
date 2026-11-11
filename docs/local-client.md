@@ -2,8 +2,9 @@
 
 The local client is a standalone Go executable. It serves Reah's
 remote catalog over stdio and keeps OAuth tokens and device-key material in
-the operating system credential store. macOS uses Secure Enclave for new keys,
-while Linux and Windows use software keys in their OS credential stores. Hardware keys keep
+the operating system credential store. Supported Macs automatically use Secure
+Enclave for new keys; unsupported Macs, Linux and Windows use software keys in
+their OS credential stores. Hardware keys keep
 the private scalar in hardware and store only a wrapped device-bound reference
 in Keychain. Running it does not require Node.js,
 npm, or an npm account. The hosted read-only connection still requires no local
@@ -111,9 +112,12 @@ reah-mcp login --profile default
 
 ## macOS Secure Enclave keys
 
-On macOS, every new login uses a Secure Enclave key automatically, with no
-storage selector or software fallback. Use a macOS binary built with `make build`
-or a release containing this feature. All Apple silicon Macs have Secure Enclave;
+On macOS, login automatically checks native Secure Enclave availability. Supported
+Macs use a hardware key; explicitly unsupported Macs use the original software
+P-256 key stored in Keychain. No storage selector is needed. A probe failure or
+a key-creation error does not trigger software fallback or replace existing
+credentials. Use a macOS binary built with `make build` or a release containing
+this feature. All Apple silicon Macs have Secure Enclave;
 Intel availability depends on the security chip and OS. The helper targets macOS
 12 or newer and checks CryptoKit availability at runtime rather than using a
 model-name allowlist. Virtual machines may not expose hardware access.
@@ -126,8 +130,10 @@ reah-mcp serve --profile enclave
 ```
 
 Existing software-key profiles remain usable until a new login. Login always
-replaces the key and OAuth grant; on macOS it generates a hardware key even if
-the previous grant used a software key. Software private keys cannot be imported
+replaces the key and OAuth grant; on a supported Mac it generates a hardware key
+even if the previous grant used a software key. On an unsupported Mac it keeps
+using software storage; that private key remains exportable to the client process.
+Software private keys cannot be imported
 into Secure Enclave, so migration requires fresh browser consent and, for
 financial access, user-confirmed credential registration. Use a separate profile
 to trial hardware without replacing an existing connection. Staging trials must also specify
@@ -166,9 +172,10 @@ not a wallet recovery key. Hardware protection reduces private-key extraction;
 malware able to run as the user may still request signatures on that Mac. There
 is no hardware-attestation guarantee to the server. Browser consent, live
 permissions, approval policies, transaction limits and expiry remain required.
-Macs without available Secure Enclave cannot create new local-client connections;
-the hosted read-only MCP connection remains available without a local key.
-Copying a hardware profile to Linux or Windows never downgrades it to software.
+An existing hardware profile never downgrades to software, including on an
+unsupported Mac or another operating system. Unlock or restore access to the
+original Mac, or explicitly revoke the connection and register a new profile.
+The hosted read-only MCP connection remains available without a local key.
 
 For an isolated, offline physical-device test from a checkout:
 

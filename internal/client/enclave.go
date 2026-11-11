@@ -25,13 +25,32 @@ type enclaveRequest struct {
 }
 
 type enclaveResponse struct {
-	Reference string `json:"reference,omitempty"`
-	PublicKey string `json:"publicKey,omitempty"`
-	Signature string `json:"signature,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Availability string `json:"availability,omitempty"`
+	Reference    string `json:"reference,omitempty"`
+	PublicKey    string `json:"publicKey,omitempty"`
+	Signature    string `json:"signature,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 func enclaveBuildAvailable() bool { return runtime.GOOS == "darwin" && len(enclaveHelper) > 0 }
+
+func enclaveAvailable() (bool, error) {
+	result, err := runEnclave(enclaveRequest{Action: "availability"})
+	if err != nil {
+		return false, err
+	}
+	return parseEnclaveAvailability(result)
+}
+
+func parseEnclaveAvailability(result enclaveResponse) (bool, error) {
+	if result == (enclaveResponse{Availability: "available"}) {
+		return true, nil
+	}
+	if result == (enclaveResponse{Availability: "unsupported"}) {
+		return false, nil
+	}
+	return false, errors.New("invalid Secure Enclave availability response; no software fallback is used")
+}
 
 func runEnclave(request enclaveRequest) (enclaveResponse, error) {
 	var result enclaveResponse

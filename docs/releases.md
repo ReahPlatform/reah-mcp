@@ -26,7 +26,10 @@ Both macOS executables embed that helper using the `secureenclave` build tag;
 Linux and Windows builds omit it and reject Secure Enclave requests explicitly.
 The helper is part of the Go executable, so archive checksums and signed update
 metadata cover it too. No separate helper download or runtime compiler is used.
-macOS login requires hardware keys by default and offers no software override.
+macOS login automatically uses hardware keys when the native API reports support;
+explicitly unsupported Macs retain software keys in Keychain. Native probe or
+creation failures never trigger fallback, and existing hardware profiles never
+downgrade. There is no manual storage override.
 Plain `go build`/`go install` builds omit the native component and cannot create
 new macOS connections; use `make build` or the full release binary. Verify hardware
 profiles against an upgraded macOS executable before publishing; a virtual CI

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,18 +105,48 @@ func TestEnclaveSignatureFormatsAndRequestBinding(t *testing.T) {
 	}
 }
 
-func TestPlatformKeyStorageNeverSilentlyDowngrades(t *testing.T) {
-	s := &Session{DeviceKey: enclaveMetadata(t)}
+func TestPlatformKeyStorageCapabilityAndDowngradeProtection(t *testing.T) {
+	probeErr := errors.New("device locked or helper unavailable")
 	for _, platform := range []string{"darwin", "linux", "windows"} {
-		want := softwareKeyStorage
-		if platform == "darwin" {
-			want = enclaveKeyStorage
-		}
-		if loginKeyStorage(platform, nil) != want || loginKeyStorage(platform, &Session{DeviceKey: testKey(t)}) != want {
-			t.Fatal("platform default did not apply to new login or software-key migration")
-		}
-		if loginKeyStorage(platform, s) != enclaveKeyStorage {
-			t.Fatal("hardware profile downgraded on another OS")
+		for _, session := range []*Session{nil, {DeviceKey: testKey(t)}, {DeviceKey: enclaveMetadata(t)}} {
+			for _, probe := range []struct {
+				supported bool
+				err       error
+			}{{true, nil}, {false, nil}, {false, probeErr}} {
+				calls := 0
+				storage, err := loginKeyStorage(platform, session, func() (bool, error) {
+					calls++
+					return probe.supported, probe.err
+				})
+				if session != nil && keyStorage(session.DeviceKey) == enclaveKeyStorage {
+					if storage != enclaveKeyStorage || err != nil || calls != 0 {
+						t.Fatal("existing hardware profile used fallback detection")
+					}
+					continue
+				}
+				if platform != "darwin" {
+					if storage != softwareKeyStorage || err != nil || calls != 0 {
+						t.Fatal("non-macOS software profile required native detection")
+					}
+					continue
+				}
+				if calls != 1 {
+					t.Fatal("macOS login did not check native availability once")
+				}
+				if probe.err != nil {
+					if !errors.Is(err, probeErr) || storage != "" {
+						t.Fatal("probe failure silently selected a software key")
+					}
+					continue
+				}
+				want := softwareKeyStorage
+				if probe.supported {
+					want = enclaveKeyStorage
+				}
+				if storage != want || err != nil {
+					t.Fatal("key storage did not match native capability")
+				}
+			}
 		}
 	}
 	if _, err := generateStoredKey("unknown"); err == nil {
@@ -125,8 +156,35 @@ func TestPlatformKeyStorageNeverSilentlyDowngrades(t *testing.T) {
 		if _, err := generateStoredKey(enclaveKeyStorage); err == nil {
 			t.Fatal("unsupported build fell back to software")
 		}
-		if _, err := signText(s.DeviceKey, "request", true); err == nil {
+		if _, err := signText(enclaveMetadata(t), "request", true); err == nil {
 			t.Fatal("unsupported build signed a hardware key")
+		}
+	}
+}
+
+func TestEnclaveAvailabilityRequiresExplicitNativeResult(t *testing.T) {
+	for _, supported := range []bool{true, false} {
+		value := "unsupported"
+		if supported {
+			value = "available"
+		}
+		got, err := parseEnclaveAvailability(enclaveResponse{Availability: value})
+		if err != nil || got != supported {
+			t.Fatal("invalid explicit capability result")
+		}
+	}
+	for _, response := range []enclaveResponse{
+		{},
+		{Availability: "unknown"},
+		{Error: "key_unavailable"},
+		{Error: "hardware_unavailable"},
+		{Availability: "unsupported", Error: "key_unavailable"},
+		{Availability: "unsupported", Reference: "unexpected"},
+		{Availability: "unsupported", PublicKey: "unexpected"},
+		{Availability: "unsupported", Signature: "unexpected"},
+	} {
+		if _, err := parseEnclaveAvailability(response); err == nil {
+			t.Fatal("invalid native response allowed fallback")
 		}
 	}
 }
@@ -150,7 +208,7 @@ func TestUnsupportedHardwareLoginPreservesExistingGrant(t *testing.T) {
 	origin = server.URL
 	c, _ := Configure(origin+"/mcp", "preserve-hardware")
 	for _, key := range []DeviceKey{enclaveMetadata(t), testKey(t)} {
-		if loginKeyStorage(runtime.GOOS, &Session{DeviceKey: key}) != enclaveKeyStorage {
+		if runtime.GOOS != "darwin" && keyStorage(key) != enclaveKeyStorage {
 			continue
 		}
 		session := &Session{Version: 1, Server: c.Server, ClientID: "existing", DeviceKey: key, Tokens: &Tokens{"existing-access", "existing-refresh", time.Now().Add(time.Hour).UnixMilli()}}
@@ -206,11 +264,15 @@ func TestSecureEnclaveHardware(t *testing.T) {
 	if os.Getenv("REAH_MCP_TEST_SECURE_ENCLAVE") != "1" {
 		t.Skip("set REAH_MCP_TEST_SECURE_ENCLAVE=1 on a physical Mac")
 	}
-	key, err := generateStoredKey(enclaveKeyStorage)
+	supported, err := enclaveAvailable()
+	if err != nil || !supported {
+		t.Fatal("physical test requires available Secure Enclave", err)
+	}
+	key, err := generateLoginKey(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if key.PrivateKey != "" || key.EnclaveReference == "" {
+	if key.Storage != enclaveKeyStorage || key.PrivateKey != "" || key.EnclaveReference == "" {
 		t.Fatal("hardware generation did not return an opaque reference")
 	}
 	c, _ := Configure(StagingServer, "offline-enclave-test-"+randomText()[:12])
