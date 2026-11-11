@@ -222,6 +222,13 @@ func (r *Remote) CheckStatus(ctx context.Context) (document, error) {
 		return out, changedErr
 	}
 	if err != nil {
+		var missing *connectionError
+		if s.Enrollment == nil && errors.As(err, &missing) && missing.Policy != nil && missing.Policy.Reason == credentialEnrollmentNotFound {
+			out["phase"], out["signingStatus"] = "possession_proof_required", "not_ready"
+			out["reason"], out["retryable"] = credentialEnrollmentNotFound, false
+			out["nextAction"] = r.OAuth.action("resume_registration", "No signing enrollment exists yet. Explicitly resume this connection without replacing its device key or OAuth grant; this prepares only currently eligible businesses.", "enroll-key")
+			return out, nil
+		}
 		if r.OAuth.applyCredentialPolicy(out, err) {
 			var ce *connectionError
 			if errors.As(err, &ce) && ce.Policy != nil && ce.Policy.Reason == signingEntityNotReady {

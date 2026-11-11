@@ -16,6 +16,7 @@ import (
 const credentialPolicyBodyLimit = 64 * 1024
 const signingEntityNotReady = "ENTITY_SIGNING_NOT_READY"
 const financialAuthorizationTooLong = "FINANCIAL_AUTHORIZATION_TOO_LONG"
+const credentialEnrollmentNotFound = "CREDENTIAL_ENROLLMENT_NOT_FOUND"
 
 type blockedSigningEntity struct {
 	ID   string `json:"id"`
@@ -30,6 +31,9 @@ type credentialPolicyError struct {
 }
 
 func (p *credentialPolicyError) message() string {
+	if p.Reason == credentialEnrollmentNotFound {
+		return "No signing enrollment exists for this connection. Explicitly resume enroll-key to prepare its existing authorization; read access is unchanged."
+	}
 	if p.Reason == financialAuthorizationTooLong {
 		return "Financial signing requires authorization for 1 hour or 1 day (24 hours or less). Start a new login with user consent and choose a shorter duration. Read access is unaffected. Run status --check for the login command with your original signing policy."
 	}
@@ -93,6 +97,10 @@ func parseCredentialPolicy(raw []byte, status int, path string) *credentialPolic
 	}
 	p := &credentialPolicyError{Reason: reason, NextAction: action}
 	switch reason {
+	case credentialEnrollmentNotFound:
+		if path != "/mcp/credentials/status" || code != "credential_not_ready" || action != "enroll_key" {
+			return nil
+		}
 	case financialAuthorizationTooLong:
 		var maximum int
 		if code != "financial_authorization_too_long" || action != "reauthorize" || json.Unmarshal(fields["max_authorization_seconds"], &maximum) != nil || maximum != 86400 {
@@ -134,6 +142,9 @@ func (o *OAuth) applyCredentialPolicy(out document, err error) bool {
 	}
 	if ce.Policy != nil {
 		p := ce.Policy
+		if p.Reason == credentialEnrollmentNotFound {
+			return false
+		}
 		out["reason"], out["retryable"] = p.Reason, false
 		if p.Reason == signingEntityNotReady {
 			out["phase"], out["signingStatus"] = "read_only_ready", "partially_unavailable"

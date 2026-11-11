@@ -128,7 +128,7 @@ func TestReadOnlyEnrollmentAndResumeNeverSignOrOpenProvider(t *testing.T) {
 }
 
 func TestMixedStatusVerifiesEnrolledSubsetAndKeepsOtherReadAccess(t *testing.T) {
-	for _, mode := range []string{"mixed", "read_only", "read_only_missing_receipt", "missing_receipt", "changed_proof", "duration_error", "entity_error", "unknown_error"} {
+	for _, mode := range []string{"mixed", "read_only", "read_only_missing_receipt", "missing_receipt", "changed_proof", "duration_error", "entity_error", "unknown_error", "missing_enrollment_error", "not_ready_error"} {
 		t.Run(mode, func(t *testing.T) {
 			var origin string
 			var credential document
@@ -201,6 +201,10 @@ func TestMixedStatusVerifiesEnrolledSubsetAndKeepsOtherReadAccess(t *testing.T) 
 					credential = entityPolicyFixture()
 				case "duration_error":
 					credential = document{"error": "financial_authorization_too_long", "reason": financialAuthorizationTooLong, "next_action": "reauthorize", "retryable": false, "max_authorization_seconds": 86400}
+				case "missing_enrollment_error":
+					credential = document{"error": "credential_not_ready", "reason": credentialEnrollmentNotFound, "next_action": "enroll_key", "retryable": false, "error_description": "secret-provider"}
+				case "not_ready_error":
+					credential = document{"error": "credential_not_ready", "reason": "CREDENTIAL_NOT_READY", "next_action": "inspect_connection", "retryable": false, "error_description": "secret-provider"}
 				case "unknown_error":
 					credential = document{"error": "credential_not_ready", "reason": "UNKNOWN", "error_description": "secret-provider"}
 				}
@@ -222,13 +226,19 @@ func TestMixedStatusVerifiesEnrolledSubsetAndKeepsOtherReadAccess(t *testing.T) 
 					if err != nil || out["phase"] != "read_only_ready" || len(out["blockedEntities"].([]blockedSigningEntity)) != 87 {
 						t.Fatal("legacy entity policy broke read access")
 					}
+				} else if mode == "missing_enrollment_error" {
+					next := out["nextAction"].(document)
+					args := next["args"].([]string)
+					if err != nil || out["phase"] != "possession_proof_required" || out["reason"] != credentialEnrollmentNotFound || next["action"] != "resume_registration" || len(args) == 0 || args[0] != "enroll-key" || !strings.Contains(strings.Join(args, " "), "--profile mixed") {
+						t.Fatal("interrupted preparation lost grant-preserving explicit recovery", out, err)
+					}
 				} else if err == nil {
 					t.Fatal("missing signing diagnosis")
 				}
 				if mode == "duration_error" && out["reason"] != financialAuthorizationTooLong {
 					t.Fatal("lost duration reason")
 				}
-				if mode == "unknown_error" && out["nextAction"].(document)["action"] != "inspect_connection" {
+				if (mode == "unknown_error" || mode == "not_ready_error") && out["nextAction"].(document)["action"] != "inspect_connection" {
 					t.Fatal("unknown policy advised blind enrollment")
 				}
 				return

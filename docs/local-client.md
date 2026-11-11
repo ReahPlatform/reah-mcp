@@ -281,7 +281,10 @@ is limited to 24 hours from original consent. A typed duration error recommends 
 new consent for 1 hour or 1 day using the saved signing policy; read access is
 retained until the user chooses to replace the grant. `status --check` never
 prepares credentials or submits a possession proof, including after an interrupted
-login with no saved enrollment receipt. Business diagnostic lists are runtime
+login with no saved enrollment receipt. If status explicitly reports that no
+server enrollment exists, it offers `enroll-key` to resume the same grant. A
+generic registration-not-ready error instead requires inspection and does not
+assume that retrying enrollment will help. Business diagnostic lists are runtime
 output and are never cached in the OS credential store.
 
 **Successful possession proof means `awaiting_provider`, not an active Turnkey

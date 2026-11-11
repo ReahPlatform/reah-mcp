@@ -98,3 +98,34 @@ func TestCredentialPolicyLargeRuntimeDiagnosticsAndSafeFallback(t *testing.T) {
 		t.Fatal("unsafe generic recovery")
 	}
 }
+
+func TestMissingEnrollmentPolicyRequiresExactStatusContract(t *testing.T) {
+	d := document{"error": "credential_not_ready", "reason": credentialEnrollmentNotFound, "next_action": "enroll_key", "retryable": false, "error_description": "secret-provider"}
+	raw, _ := json.Marshal(d)
+	p := parseCredentialPolicy(raw, http.StatusConflict, "/mcp/credentials/status")
+	if p == nil || p.Reason != credentialEnrollmentNotFound || strings.Contains(p.message(), "secret-provider") {
+		t.Fatal("missing safe enrollment recovery")
+	}
+	for _, path := range []string{"/mcp/credentials/prepare", "/mcp/credentials/prove", "/mcp/oauth/token"} {
+		if parseCredentialPolicy(raw, http.StatusConflict, path) != nil {
+			t.Fatal("missing status contract accepted on other path")
+		}
+	}
+	for _, mutate := range []func(document){
+		func(d document) { d["reason"] = "CREDENTIAL_NOT_READY" },
+		func(d document) { d["next_action"] = "inspect_connection" },
+		func(d document) { d["retryable"] = true },
+		func(d document) { delete(d, "retryable") },
+		func(d document) { d["error"] = "invalid_grant" },
+	} {
+		candidate := document{}
+		for k, v := range d {
+			candidate[k] = v
+		}
+		mutate(candidate)
+		b, _ := json.Marshal(candidate)
+		if parseCredentialPolicy(b, http.StatusConflict, "/mcp/credentials/status") != nil {
+			t.Fatal("generic/malformed status incorrectly offered enrollment")
+		}
+	}
+}
