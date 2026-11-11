@@ -234,7 +234,17 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 		}
 	}
 	if tool == nil {
-		return nil, errors.New("tool is unavailable in the current authenticated Reah catalog")
+		message := "tool is unavailable in the current authenticated Reah catalog"
+		// A missing name does not identify a financial capability. Add only
+		// the saved connection's explicit limitation, without inferring one.
+		_ = r.OAuth.Store.Exclusive(ctx, func() error {
+			s, err := r.OAuth.Store.Read()
+			if err == nil && s != nil && s.Tokens != nil && s.Enrollment != nil && s.Enrollment.State == "read_only" {
+				message += ". The saved connection is read-only; financial signing is unavailable for its selected businesses. Ask a business Owner to check signing access or registration."
+			}
+			return err
+		})
+		return nil, errors.New(message)
 	}
 	p, _ := localProtocol(tool)
 	if p.Mode != "signed" {

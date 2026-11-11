@@ -79,6 +79,11 @@ func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command 
 		if jsonProgress {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"stage": "local_status", "status": status})
 		}
+		if status["signingStatus"] == "read_only" {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Read access is connected. Financial signing is unavailable for the selected businesses.")
+			fmt.Fprintf(cmd.ErrOrStderr(), "Verify read access: reah-mcp status --check --server %s --profile %s\n", strconv.Quote(o.Config.Server), strconv.Quote(o.Config.Profile))
+			return nil
+		}
 		fmt.Fprintln(cmd.ErrOrStderr(), "Local credentials saved. Financial signing is not confirmed until status --check verifies it.")
 		fmt.Fprintf(cmd.ErrOrStderr(), "Verify: reah-mcp status --check --server %s --profile %s\n", strconv.Quote(o.Config.Server), strconv.Quote(o.Config.Profile))
 		if enrollRequested, _ := status["credentialEnrollmentRequested"].(bool); enrollRequested {
