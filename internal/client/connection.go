@@ -269,6 +269,11 @@ func (r *Remote) CheckStatus(ctx context.Context) (document, error) {
 			out["phase"] = "server_capability_unavailable"
 			out["nextAction"] = r.OAuth.action("check_server_capabilities", "Credentials are registered, but the live catalog exposes no supported signing tools. Check the server feature flag and client protocol version; do not repeat login.", "status", "--check")
 		}
+		if keyStorage(s.DeviceKey) == enclaveKeyStorage && !enclaveBuildAvailable() {
+			out["signedTools"] = []string{}
+			out["signingStatus"], out["phase"] = "key_unavailable", "local_key_unavailable"
+			out["nextAction"] = document{"action": "install_compatible_client", "message": "Read access works. Install a macOS client with Secure Enclave support on the original Mac. Do not replace the grant or downgrade key storage to fix an unsupported build."}
+		}
 	}
 	// A concurrent login must not turn an old grant's checks into new readiness.
 	if err = r.OAuth.Store.Exclusive(ctx, func() error {

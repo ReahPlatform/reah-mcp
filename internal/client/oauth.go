@@ -205,8 +205,17 @@ type LoginStep struct {
 }
 
 func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile string, progress func(LoginStep) error) error {
+	return o.LoginWithKeyStorage(ctx, enroll, profile, "", progress)
+}
+
+// An omitted storage choice preserves the existing backend. Switching backends
+// always creates a fresh key and consent; hardware keys cannot import old PEMs.
+func (o *OAuth) LoginWithKeyStorage(ctx context.Context, enroll bool, profile, storage string, progress func(LoginStep) error) error {
 	if profile != "wallet-transfer-v1" && profile != "financial-operations-v1" || !enroll && profile != "wallet-transfer-v1" {
 		return errors.New("use a supported policy profile with --enroll-key for financial signing")
+	}
+	if storage != "" && storage != softwareKeyStorage && storage != enclaveKeyStorage {
+		return errors.New("unsupported key storage; use software or secure-enclave")
 	}
 	page, e := o.discover(ctx, enroll)
 	if e != nil {
@@ -214,6 +223,11 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 	}
 	return o.Store.Exclusive(ctx, func() error {
 		s, e := o.Store.Read()
+		if e != nil {
+			return e
+		}
+		selectedStorage := loginKeyStorage(storage, s)
+		key, e := generateStoredKey(selectedStorage)
 		if e != nil {
 			return e
 		}
@@ -233,10 +247,7 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 		if s.Tokens != nil {
 			old = s.Tokens.RefreshToken
 		}
-		s.DeviceKey, e = generateKey()
-		if e != nil {
-			return e
-		}
+		s.DeviceKey = key
 		s.Tokens = nil
 		s.Enrollment = nil
 		s.CredentialEnrollmentRequested = enroll
@@ -313,6 +324,16 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 		return progress(LoginStep{"credential_registration_required", registrationInstructions, u.String()})
 	})
 }
+
+func loginKeyStorage(requested string, session *Session) string {
+	if requested != "" {
+		return requested
+	}
+	if session != nil {
+		return keyStorage(session.DeviceKey)
+	}
+	return softwareKeyStorage
+}
 func (o *OAuth) Logout(ctx context.Context) error {
 	return o.Store.Exclusive(ctx, func() error {
 		s, e := o.Store.Read()
@@ -348,6 +369,11 @@ func (o *OAuth) Status(ctx context.Context) (document, error) {
 		out["phase"] = "login_required"
 		out["nextAction"] = o.action("login", "Authorize a new connection. Login replaces this profile's previous grant.", "login")
 		if s != nil {
+			out["keyStorage"] = keyStorage(s.DeviceKey)
+			out["keyExportable"] = keyStorage(s.DeviceKey) == softwareKeyStorage
+			if keyStorage(s.DeviceKey) == enclaveKeyStorage {
+				out["secureEnclaveBuildAvailable"] = enclaveBuildAvailable()
+			}
 			if s.PendingRevocation != "" {
 				out["recoveryNote"] = "Local access was disabled before an unconfirmed refresh or revocation. Never replay the saved refresh token manually; a new login will attempt revocation before fresh consent."
 			}

@@ -60,7 +60,7 @@ func (v *Vault) Read() (*Session, error) {
 	if json.Unmarshal([]byte(raw), &s) != nil || s.Version != 1 || s.Server != v.Config.Server || s.ClientID == "" {
 		return nil, errors.New("invalid saved Reah credentials; reconnect")
 	}
-	if _, e = privateKey(s.DeviceKey); e != nil {
+	if e = validateDeviceKey(s.DeviceKey); e != nil {
 		return nil, e
 	}
 	if s.Tokens != nil && (s.Tokens.AccessToken == "" || s.Tokens.RefreshToken == "" || s.Tokens.ExpiresAt <= 0) {

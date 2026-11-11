@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       REAH_MCP_UPDATE_URL: https://github.com/ReahPlatform/reah-mcp/releases/latest/download/update.json

@@ -49,7 +49,7 @@ func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command 
 		return factory(c), nil
 	}
 	var enroll, noBrowser, jsonProgress bool
-	var policyProfile string
+	var policyProfile, keyStorage string
 	progress := func(cmd *cobra.Command, noBrowser, jsonProgress bool) func(client.LoginStep) error {
 		return func(step client.LoginStep) error {
 			if jsonProgress {
@@ -91,7 +91,7 @@ func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command 
 		if e != nil {
 			return e
 		}
-		e = o.LoginWithProgress(cmd.Context(), enroll, policyProfile, progress(cmd, noBrowser, jsonProgress))
+		e = o.LoginWithKeyStorage(cmd.Context(), enroll, policyProfile, keyStorage, progress(cmd, noBrowser, jsonProgress))
 		if e != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Inspect saved progress before starting another login: reah-mcp status --check --server %s --profile %s\n", strconv.Quote(o.Config.Server), strconv.Quote(o.Config.Profile))
 			return e
@@ -99,6 +99,7 @@ func commandWithOAuth(factory func(client.Config) *client.OAuth) *cobra.Command 
 		return finish(cmd, o, jsonProgress)
 	}}
 	login.Flags().StringVar(&policyProfile, "policy-profile", "wallet-transfer-v1", "Explicit signing policy: wallet-transfer-v1 or financial-operations-v1 (requires --enroll-key)")
+	login.Flags().StringVar(&keyStorage, "key-storage", "", "Device key storage: software or secure-enclave (macOS); omitted preserves this profile's backend, defaulting to software for new profiles")
 	login.Flags().BoolVar(&enroll, "enroll-key", false, "Request user-confirmed signing credential registration")
 	login.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the authorization URL without launching a browser")
 	login.Flags().BoolVar(&jsonProgress, "json", false, "Emit newline-delimited JSON stages and private continuation URLs for the Agent")
