@@ -42,7 +42,7 @@ func parseEnrollment(d document, c Config, s *Session) (*Receipt, string, error)
 	ids, ok := d["entity_ids"].([]any)
 	deadline, e1 := time.Parse(time.RFC3339Nano, stringAt(d, "enrollment_expires_at"))
 	expiry, e2 := time.Parse(time.RFC3339Nano, stringAt(d, "credential_expires_at"))
-	if !validUUID(id) || d["public_key"] != s.DeviceKey.PublicKey || d["public_key_fingerprint"] != hex.EncodeToString(h[:]) || !ok || len(ids) < 1 || len(ids) > 100 || e1 != nil || e2 != nil || deadline.After(expiry) || len(payload) > 65536 || !slices.Contains([]string{"awaiting_key_proof", "awaiting_provider", "expired", "revoked"}, state) {
+	if !validUUID(id) || d["public_key"] != s.DeviceKey.PublicKey || d["public_key_fingerprint"] != hex.EncodeToString(h[:]) || !ok || len(ids) > 100 || e1 != nil || e2 != nil || deadline.After(expiry) || len(payload) > 65536 || !slices.Contains([]string{"awaiting_key_proof", "awaiting_provider", "expired", "revoked", "read_only"}, state) {
 		return nil, "", errEnrollment
 	}
 	for i, v := range ids {
@@ -52,6 +52,22 @@ func parseEnrollment(d document, c Config, s *Session) (*Receipt, string, error)
 		}
 	}
 	if s.Enrollment != nil && (s.Enrollment.ConnectionID != id || s.Enrollment.CredentialExpiresAt != d["credential_expires_at"]) {
+		return nil, "", errEnrollment
+	}
+	if s.Enrollment != nil && s.Enrollment.State == "read_only" && s.Enrollment.ProofHash != digest("") {
+		return nil, "", errEnrollment
+	}
+	if state == "read_only" {
+		if s.CredentialPolicyProfile != "" && s.CredentialPolicyProfile != "wallet-transfer-v1" && s.CredentialPolicyProfile != "financial-operations-v1" {
+			return nil, "", errEnrollment
+		}
+		if len(ids) != 0 || d["proof_payload"] != "" || !deadline.Equal(expiry) || !expiry.After(time.Now()) || expiry.After(time.Now().Add(30*24*time.Hour)) ||
+			(s.Enrollment != nil && (s.Enrollment.State != "read_only" || s.Enrollment.ProofHash != digest(""))) {
+			return nil, "", errEnrollment
+		}
+		return &Receipt{id, state, stringAt(d, "credential_expires_at"), digest("")}, "", nil
+	}
+	if len(ids) < 1 {
 		return nil, "", errEnrollment
 	}
 	if state == "awaiting_key_proof" || state == "awaiting_provider" {
@@ -92,7 +108,7 @@ func parseEnrollment(d document, c Config, s *Session) (*Receipt, string, error)
 				return nil, "", errEnrollment
 			}
 		}
-		if s.Enrollment != nil && s.Enrollment.ProofHash != digest(payload) {
+		if s.Enrollment != nil && s.Enrollment.State != "read_only" && s.Enrollment.ProofHash != digest(payload) {
 			return nil, "", errEnrollment
 		}
 	} else if payload != "" {
@@ -123,7 +139,7 @@ func (o *OAuth) prepareKey(ctx context.Context, s *Session) error {
 	if e = o.Store.Write(s); e != nil {
 		return e
 	}
-	if r.State == "awaiting_provider" {
+	if r.State == "awaiting_provider" || r.State == "read_only" {
 		return nil
 	}
 	if r.State != "awaiting_key_proof" {
@@ -171,6 +187,9 @@ func (o *OAuth) signingKey(ctx context.Context) (DeviceKey, error) {
 		s, e := o.Store.Read()
 		if e != nil {
 			return e
+		}
+		if s != nil && s.Tokens != nil && s.Enrollment != nil && s.Enrollment.State == "read_only" {
+			return errors.New(readOnlySigningMessage)
 		}
 		if s == nil || s.Tokens == nil || !s.CredentialEnrollmentRequested || s.Enrollment == nil || s.Enrollment.State != "awaiting_provider" {
 			return errors.New("log in with --enroll-key and complete registration in Reah first")

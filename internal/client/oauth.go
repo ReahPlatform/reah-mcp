@@ -151,7 +151,7 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 			return e
 		}
 		if s == nil || s.Tokens == nil {
-			return &connectionError{"login_required", "Reah has no usable local OAuth credentials; run status with this server and profile for the exact login command"}
+			return &connectionError{Code: "login_required", Message: "Reah has no usable local OAuth credentials; run status with this server and profile for the exact login command"}
 		}
 		if s.Tokens.ExpiresAt > time.Now().Add(30*time.Second).UnixMilli() {
 			token = s.Tokens.AccessToken
@@ -170,7 +170,7 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 		}
 		s.Tokens, e = parseTokens(d)
 		if e != nil {
-			return &connectionError{"login_required", "refresh returned unusable credentials; the consumed token will not be retried; run status for a new login command"}
+			return &connectionError{Code: "login_required", Message: "refresh returned unusable credentials; the consumed token will not be retried; run status for a new login command"}
 		}
 		s.PendingRevocation = ""
 		if e = o.Store.Write(s); e != nil {
@@ -306,6 +306,9 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 		if e = o.prepareKey(ctx, s); e != nil {
 			return e
 		}
+		if s.Enrollment.State == "read_only" {
+			return progress(LoginStep{"read_only_connected", readOnlySigningMessage, ""})
+		}
 		u, _ = url.Parse(page)
 		q = u.Query()
 		q.Set("connectionId", s.Enrollment.ConnectionID)
@@ -364,14 +367,18 @@ func (o *OAuth) Status(ctx context.Context) (document, error) {
 				if s.Tokens == nil {
 					out["nextAction"] = o.action("login", "Authorize a new connection with the original signing policy. Login replaces the previous grant.", "login", "--enroll-key", "--policy-profile", policyProfile(s))
 				} else if s.Enrollment == nil {
-					out["phase"] = "possession_proof_required"
-					out["nextAction"] = o.action("resume_registration", "Resume this connection without replacing its key or OAuth grant.", "enroll-key")
+					out["phase"] = "signing_not_checked"
+					out["nextAction"] = o.action("check_connection", "Check current signing eligibility before attempting enrollment. Read-only OAuth may still work.", "status", "--check")
 				} else {
 					out["phase"] = "registration_unverified"
 				}
 			}
 			if s.Enrollment != nil {
 				out["enrollment"] = s.Enrollment
+				if s.Tokens != nil && s.Enrollment.State == "read_only" {
+					out["phase"], out["signingStatus"] = "read_only_connected", "read_only"
+					out["nextAction"] = o.action("check_connection", "Verify the saved read-only connection. Financial signing is not enabled for the selected businesses.", "status", "--check")
+				}
 			}
 		}
 		return nil

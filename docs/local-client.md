@@ -107,8 +107,10 @@ copied into the local client.
 For an Agent coordinating login, use `login --no-browser --json`. Output is
 newline-delimited JSON with named stages: `oauth_consent_required` contains the
 OAuth URL; `oauth_connected` confirms token storage. If `--enroll-key` was
-requested, a **second** `credential_registration_required` stage contains the
-credential registration URL. Open each URL for the user at its corresponding
+requested and any selected businesses support signing, a **second**
+`credential_registration_required` stage contains the credential registration URL.
+If none support signing, `read_only_connected` confirms successful read access
+without a possession signature or provider registration page. Open each URL for the user at its corresponding
 stage. Keep the login command running until the OAuth callback completes.
 Continuation URLs are private; do not post them in issues, shared transcripts or
 logs. `--no-browser` suppresses automatic browser launching, not the second step.
@@ -179,7 +181,13 @@ profile and requested signing policy. It does not prove server readiness.
 
 `status --check` verifies authenticated catalog access, reads credential status
 and validates the live signing context for **every enrolled business**, including
-the connection ID, public key, policy profile and expiry. It can refresh OAuth
+the connection ID, public key, policy profile and expiry. Read access covers all
+businesses authorized by OAuth; signing readiness covers only the frozen enrolled
+subset (`readOnlyScope: all_authorized_businesses`,
+`signingScope: enrolled_businesses`). It does not imply financial permission for
+other authorized businesses. An all-read-only connection reports
+`read_only_ready`, `signingStatus: read_only` and `signingScope: none` successfully.
+It can refresh OAuth
 but never starts or executes a payment, registers provider credentials, revokes a
 grant, or generates a replacement key. The server's short registration window
 can expire while already registered signing bindings remain active. The check
@@ -209,7 +217,9 @@ missing possession proof and opens the current connection's registration page,
 preserving its grant, device key and businesses. With `--no-browser --json`, the
 Agent receives a labeled URL to open for the user. Verify completion with
 `status --check`; a successful `enroll-key` invocation only means the registration
-page was handed off, not that the user approved it.
+page was handed off, not that the user approved it. If no selected business
+supports signing, enrollment instead reports read access connected without
+opening that page. Repeating enrollment does not grant business permissions.
 
 Login disables the old local credentials and revokes the previous connection
 before opening new consent. The same profile reuses its registered client ID.
@@ -256,12 +266,26 @@ reah-mcp enroll-key --profile default
 ```
 
 The public key is fixed in the OAuth request before browser consent. Backend
-binds it to the authenticated user, connection and selected businesses. The
+binds it to the authenticated user and connection. OAuth retains read access to
+all selected businesses; credential proof and browser registration include only
+the eligible subset. Other selected businesses remain read-only. Financial calls
+check business permissions before sending signatures and explain missing signing
+access. Ask a business Owner to enable the required access or check registration.
+An existing signed proof never silently expands when eligibility changes. The
 client checks the Hodor proof's purpose, server, client, public key, connection,
 businesses and expiry, then signs its exact UTF-8 bytes using SHA-256/P-256 and
 a 64-byte IEEE P1363 signature. It sends only the signature; it never sends the
 private key or exposes an arbitrary signing tool. Repeated preparation uses the
-same challenge and does not extend its lifetime.
+same challenge and does not extend its lifetime. Financial signing authorization
+is limited to 24 hours from original consent. A typed duration error recommends a
+new consent for 1 hour or 1 day using the saved signing policy; read access is
+retained until the user chooses to replace the grant. `status --check` never
+prepares credentials or submits a possession proof, including after an interrupted
+login with no saved enrollment receipt. If status explicitly reports that no
+server enrollment exists, it offers `enroll-key` to resume the same grant. A
+generic registration-not-ready error instead requires inspection and does not
+assume that retrying enrollment will help. Business diagnostic lists are runtime
+output and are never cached in the OS credential store.
 
 **Successful possession proof means `awaiting_provider`, not an active Turnkey
 credential.** When discovery advertises credential registration, login opens the

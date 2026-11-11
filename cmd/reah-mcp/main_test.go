@@ -219,3 +219,71 @@ func TestStdioHelper(t *testing.T) {
 	}
 	os.Exit(0)
 }
+
+func TestReadOnlyEnrollmentCommandSucceedsWithoutRegistrationPage(t *testing.T) {
+	for _, jsonOutput := range []bool{false, true} {
+		t.Run(map[bool]string{false: "human", true: "json"}[jsonOutput], func(t *testing.T) {
+			var origin string
+			publicBytes := []byte{2, 1, 2, 3}
+			public := hex.EncodeToString(publicBytes)
+			fingerprint := sha256.Sum256(publicBytes)
+			expiry := time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
+			credential := map[string]any{"connection_id": "11111111-1111-4111-8111-111111111111", "state": "read_only", "entity_ids": []string{}, "proof_payload": "", "public_key": public, "public_key_fingerprint": hex.EncodeToString(fingerprint[:]), "credential_expires_at": expiry, "enrollment_expires_at": expiry}
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var d map[string]any
+				switch r.URL.Path {
+				case "/.well-known/oauth-protected-resource/mcp":
+					d = map[string]any{"resource": origin + "/mcp", "authorization_servers": []string{origin}}
+				case "/.well-known/oauth-authorization-server":
+					d = map[string]any{"issuer": origin, "code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{"reah.read"}, "authorization_endpoint": origin + "/mcp/oauth/authorize", "token_endpoint": origin + "/mcp/oauth/token", "revocation_endpoint": origin + "/mcp/oauth/revoke", "registration_endpoint": origin + "/mcp/oauth/register", "reah_credential_enrollment_supported": true, "reah_credential_registration_uri": origin + "/mcp/credentials"}
+				case "/mcp/credentials/prepare", "/mcp/credentials/status":
+					d = credential
+				default:
+					t.Error("read-only command attempted mutation/provider request", r.URL.Path)
+					http.Error(w, "unexpected", 500)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(d)
+			}))
+			defer server.Close()
+			origin = server.URL
+			store := &cliStore{session: &client.Session{ClientID: "client", DeviceKey: client.DeviceKey{PublicKey: public}, Tokens: &client.Tokens{AccessToken: "secret-access", RefreshToken: "secret-refresh", ExpiresAt: time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}}
+			cmd := commandWithOAuth(func(c client.Config) *client.OAuth {
+				return &client.OAuth{Config: c, Store: store, HTTP: server.Client()}
+			})
+			var out, stderr bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&stderr)
+			args := []string{"enroll-key", "--no-browser", "--server", origin + "/mcp", "--profile", "readonly-profile"}
+			if jsonOutput {
+				args = append(args, "--json")
+			}
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			combined := out.String() + stderr.String()
+			for _, forbidden := range []string{"connectionId=", "credential_registration_required", "Resume the existing registration", "secret-access", "secret-refresh"} {
+				if strings.Contains(combined, forbidden) {
+					t.Fatal("read-only command exposed credentials or registration instruction")
+				}
+			}
+			if jsonOutput {
+				decoder := json.NewDecoder(&out)
+				var step client.LoginStep
+				if err := decoder.Decode(&step); err != nil || step.Stage != "read_only_connected" || step.URL != "" {
+					t.Fatal("missing read-only stage", err)
+				}
+				var event struct {
+					Stage  string
+					Status map[string]any
+				}
+				if err := decoder.Decode(&event); err != nil || event.Stage != "local_status" || event.Status["signingStatus"] != "read_only" {
+					t.Fatal("missing read-only result", err)
+				}
+			} else if !strings.Contains(stderr.String(), "Read access is connected") || !strings.Contains(stderr.String(), "status --check") {
+				t.Fatal("missing read-only completion guidance")
+			}
+		})
+	}
+}

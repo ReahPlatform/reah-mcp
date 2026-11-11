@@ -13,19 +13,30 @@ import (
 	"time"
 )
 
+const readOnlySigningMessage = "Read access is connected. Financial signing is unavailable for the selected businesses. Ask a business Owner to enable signing access or check your permissions before attempting financial actions; repeating enrollment does not grant access."
+
 const registrationInstructions = "OAuth is connected; financial signing is not yet verified. An authorized Owner, Admin or Operator (Member) must finish credential registration for the selected businesses on this second page. If Reah reports expired browser signing access or REAUTH_REQUIRED, sign in to the Reah website again with email verification or Passkey, then reopen this registration page. Do not replace the MCP connection to fix a browser session."
 
-type connectionError struct{ Code, Message string }
+type connectionError struct {
+	Code, Message string
+	Policy        *credentialPolicyError
+}
 
 func (e *connectionError) Error() string { return e.Code + ": " + e.Message }
 
 // Only recognized error codes are displayed. Never echo response descriptions,
 // request URLs or transport errors, which can contain credentials or HTML.
 func oauthHTTPError(r *http.Response, path string) error {
+	raw, readErr := io.ReadAll(io.LimitReader(r.Body, credentialPolicyBodyLimit+1))
 	var body struct {
 		Error string `json:"error"`
 	}
-	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+	if readErr == nil && len(raw) <= credentialPolicyBodyLimit {
+		if policy := parseCredentialPolicy(raw, r.StatusCode, path); policy != nil {
+			return &connectionError{Code: policy.Reason, Message: policy.message(), Policy: policy}
+		}
+		_ = json.Unmarshal(raw, &body)
+	}
 	code, message := "request_failed", "Check connectivity and server availability before replacing a connection."
 	switch {
 	case r.StatusCode == 401 || body.Error == "invalid_grant" || body.Error == "invalid_token":
@@ -40,7 +51,7 @@ func oauthHTTPError(r *http.Response, path string) error {
 			message = "Client registration was denied before browser consent. Check server or ingress policy; repeating browser login cannot fix this request."
 		}
 	}
-	return &connectionError{code, fmt.Sprintf("%s (HTTP %d, %s)", message, r.StatusCode, path)}
+	return &connectionError{Code: code, Message: fmt.Sprintf("%s (HTTP %d, %s)", message, r.StatusCode, path)}
 }
 
 func safeConnectionError(err error) error {
@@ -77,6 +88,7 @@ func (o *OAuth) ResumeRegistration(ctx context.Context, progress func(LoginStep)
 		return err
 	}
 	var connectionID string
+	var readOnly bool
 	err = o.Store.Exclusive(ctx, func() error {
 		s, err := o.Store.Read()
 		if err != nil {
@@ -85,12 +97,12 @@ func (o *OAuth) ResumeRegistration(ctx context.Context, progress func(LoginStep)
 		if s == nil || s.Tokens == nil || !s.CredentialEnrollmentRequested {
 			return errors.New("this connection did not request signing; a new login with --enroll-key requires user consent")
 		}
-		if s.Enrollment == nil || s.Enrollment.State == "awaiting_key_proof" {
+		if s.Enrollment == nil || s.Enrollment.State == "awaiting_key_proof" || s.Enrollment.State == "read_only" {
 			if err = o.prepareKey(ctx, s); err != nil {
 				return err
 			}
 		}
-		if s.Enrollment.State != "awaiting_provider" {
+		if s.Enrollment.State != "awaiting_provider" && s.Enrollment.State != "read_only" {
 			return errors.New("credential registration expired or was revoked; check status before authorizing a new connection")
 		}
 		if !validUUID(s.Enrollment.ConnectionID) {
@@ -100,21 +112,28 @@ func (o *OAuth) ResumeRegistration(ctx context.Context, progress func(LoginStep)
 		if err != nil {
 			return err
 		}
-		if _, err = checkedEnrollment(d, s); err != nil {
+		if _, err = checkedEnrollment(d, s, o.Config); err != nil {
 			return err
+		}
+		if d["state"] == "read_only" {
+			readOnly = true
+			return nil
 		}
 		if d["state"] == "expired" || d["state"] == "revoked" {
 			return errors.New("the server's credential registration window is closed; run status --check to distinguish existing active bindings from incomplete registration before starting a new login")
 		}
 		expiry, err := time.Parse(time.RFC3339Nano, s.Enrollment.CredentialExpiresAt)
 		if err != nil || !expiry.After(time.Now()) {
-			return &connectionError{"login_required", "The credential's authorized duration has expired; authorize a new connection."}
+			return &connectionError{Code: "login_required", Message: "The credential's authorized duration has expired; authorize a new connection."}
 		}
 		connectionID = s.Enrollment.ConnectionID
 		return nil
 	})
 	if err != nil {
 		return err
+	}
+	if readOnly {
+		return progress(LoginStep{"read_only_connected", readOnlySigningMessage, ""})
 	}
 	u, _ := url.Parse(page)
 	q := u.Query()
@@ -167,32 +186,92 @@ func (r *Remote) CheckStatus(ctx context.Context) (document, error) {
 		return out, errors.New("connection changed during check; run status --check again")
 	}
 	out["readOnlyStatus"], out["phase"] = "ready", "read_only_ready"
+	out["readOnlyScope"], out["signingScope"] = "all_authorized_businesses", "none"
 	out["checkedAt"] = time.Now().UTC().Format(time.RFC3339)
 	out["nextAction"] = r.OAuth.action("reload_tools", "Reload the host's MCP connection and verify the authorized business list before use.", "status", "--check")
-	if out["credentialEnrollmentRequested"] != true || out["enrollment"] == nil {
-		if out["credentialEnrollmentRequested"] == true {
-			out["phase"] = "possession_proof_required"
-			out["nextAction"] = r.OAuth.action("resume_registration", "Continue the current connection's possession proof and browser registration.", "enroll-key")
-		}
+	if out["credentialEnrollmentRequested"] != true {
 		return out, nil
 	}
+	out["signingScope"] = "enrolled_businesses"
 	var s *Session
 	err = r.OAuth.Store.Exclusive(ctx, func() error {
-		var err error
-		s, err = r.OAuth.Store.Read()
-		return err
+		current, readErr := r.OAuth.Store.Read()
+		if readErr != nil {
+			return readErr
+		}
+		if current == nil || current.Tokens == nil {
+			return errors.New("connection changed during check; run status --check again")
+		}
+		snapshot := *current
+		tokens := *current.Tokens
+		snapshot.Tokens = &tokens
+		if current.Enrollment != nil {
+			receipt := *current.Enrollment
+			snapshot.Enrollment = &receipt
+		}
+		s = &snapshot
+		return nil
 	})
-	if err != nil || s == nil || s.Tokens == nil || s.Enrollment == nil {
-		return out, errors.New("connection changed during check; run status --check again")
+	if err != nil {
+		return out, err
 	}
 	d, err := r.OAuth.request(ctx, "/mcp/credentials/status", document{}, s.Tokens.AccessToken)
+	if changedErr := r.OAuth.checkDiagnosticSession(ctx, s); changedErr != nil {
+		out["phase"], out["signingStatus"] = "connection_check_failed", "unverified"
+		out["nextAction"] = r.OAuth.action("retry_check", "The connection changed during validation; recheck before use.", "status", "--check")
+		return out, changedErr
+	}
 	if err != nil {
+		var missing *connectionError
+		if s.Enrollment == nil && errors.As(err, &missing) && missing.Policy != nil && missing.Policy.Reason == credentialEnrollmentNotFound {
+			out["phase"], out["signingStatus"] = "possession_proof_required", "not_ready"
+			out["reason"], out["retryable"] = credentialEnrollmentNotFound, false
+			out["nextAction"] = r.OAuth.action("resume_registration", "No signing enrollment exists yet. Explicitly resume this connection without replacing its device key or OAuth grant; this prepares only currently eligible businesses.", "enroll-key")
+			return out, nil
+		}
+		if r.OAuth.applyCredentialPolicy(out, err) {
+			var ce *connectionError
+			if errors.As(err, &ce) && ce.Policy != nil && ce.Policy.Reason == signingEntityNotReady {
+				return out, nil
+			}
+			return out, err
+		}
 		out["phase"], out["signingStatus"] = "signing_check_failed", "unverified"
 		out["checkError"] = safeConnectionError(err).Error()
 		out["nextAction"] = r.OAuth.action("retry_check", "Read access works, but credential status could not be checked. Do not infer signing permission or replace the grant.", "status", "--check")
 		return out, err
 	}
-	ids, err := checkedEnrollment(d, s)
+	if d["state"] == "read_only" {
+		if _, _, parseErr := parseEnrollment(d, r.OAuth.Config, s); parseErr != nil {
+			out["phase"], out["signingStatus"] = "signing_check_failed", "unverified"
+			out["nextAction"] = r.OAuth.action("retry_check", "Credential status could not be verified. Keep read access and recheck before financial use.", "status", "--check")
+			return out, parseErr
+		}
+		out["registrationWindowState"] = "read_only"
+		r.OAuth.readOnlySigningStatus(out)
+		return out, nil
+	}
+	if s.Enrollment == nil || s.Enrollment.State == "read_only" {
+		// Inspect the server's existing proof without adopting it, persisting a
+		// receipt, proving possession, preparing a key or opening registration.
+		receipt, _, parseErr := parseEnrollment(d, r.OAuth.Config, s)
+		if parseErr != nil {
+			out["phase"], out["signingStatus"] = "signing_check_failed", "unverified"
+			out["nextAction"] = r.OAuth.action("retry_check", "Credential binding could not be verified. Do not sign; recheck this connection.", "status", "--check")
+			return out, parseErr
+		}
+		out["registrationWindowState"] = receipt.State
+		out["signingStatus"] = "unverified"
+		if receipt.State == "expired" || receipt.State == "revoked" {
+			out["phase"] = "credential_inactive"
+			out["nextAction"] = r.OAuth.loginAction(out)
+		} else {
+			out["phase"] = "possession_proof_required"
+			out["nextAction"] = r.OAuth.action("resume_registration", "The existing server proof matches this connection. Explicitly resume enrollment and browser registration; signing is not yet verified.", "enroll-key")
+		}
+		return out, nil
+	}
+	ids, err := checkedEnrollment(d, s, r.OAuth.Config)
 	if err != nil {
 		out["phase"], out["signingStatus"] = "signing_check_failed", "unverified"
 		out["nextAction"] = r.OAuth.action("retry_check", "Credential binding could not be verified. Do not sign; recheck this connection.", "status", "--check")
@@ -265,6 +344,7 @@ func (r *Remote) CheckStatus(ctx context.Context) (document, error) {
 		}
 		out["signedTools"] = signed
 		out["signingStatus"], out["phase"] = "ready", "signing_ready"
+		out["nextAction"] = r.OAuth.action("reload_tools", "Financial signing is verified only for the listed enrolled businesses. Other authorized businesses retain read access; each financial call checks that business again.", "status", "--check")
 		if len(signed) == 0 {
 			out["phase"] = "server_capability_unavailable"
 			out["nextAction"] = r.OAuth.action("check_server_capabilities", "Credentials are registered, but the live catalog exposes no supported signing tools. Check the server feature flag and client protocol version; do not repeat login.", "status", "--check")
@@ -288,6 +368,30 @@ func (r *Remote) CheckStatus(ctx context.Context) (document, error) {
 	return out, nil
 }
 
+func (o *OAuth) readOnlySigningStatus(out document) {
+	out["phase"], out["signingStatus"], out["signingScope"] = "read_only_ready", "read_only", "none"
+	out["nextAction"] = o.action("use_read_only_tools", readOnlySigningMessage, "status", "--check")
+}
+
+func (o *OAuth) checkDiagnosticSession(ctx context.Context, snapshot *Session) error {
+	return o.Store.Exclusive(ctx, func() error {
+		current, err := o.Store.Read()
+		if err != nil {
+			return err
+		}
+		if current == nil || current.Tokens == nil || current.ClientID != snapshot.ClientID ||
+			current.DeviceKey.PublicKey != snapshot.DeviceKey.PublicKey || current.Tokens.AccessToken != snapshot.Tokens.AccessToken ||
+			current.CredentialEnrollmentRequested != snapshot.CredentialEnrollmentRequested || current.CredentialPolicyProfile != snapshot.CredentialPolicyProfile ||
+			(current.Enrollment == nil) != (snapshot.Enrollment == nil) {
+			return errors.New("connection changed during check; run status --check again")
+		}
+		if current.Enrollment != nil && *current.Enrollment != *snapshot.Enrollment {
+			return errors.New("connection changed during check; run status --check again")
+		}
+		return nil
+	})
+}
+
 func (o *OAuth) loginAction(status document) document {
 	args := []string{"login"}
 	if status["credentialEnrollmentRequested"] == true {
@@ -296,7 +400,13 @@ func (o *OAuth) loginAction(status document) document {
 	return o.action("login", "Authorize a new connection with user consent. This replaces the previous grant.", args...)
 }
 
-func checkedEnrollment(d document, s *Session) ([]string, error) {
+func checkedEnrollment(d document, s *Session, config Config) ([]string, error) {
+	if d["state"] == "read_only" {
+		if _, _, err := parseEnrollment(d, config, s); err != nil {
+			return nil, err
+		}
+		return []string{}, nil
+	}
 	ids, ok := d["entity_ids"].([]any)
 	expiry, err := time.Parse(time.RFC3339Nano, stringAt(d, "credential_expires_at"))
 	state := stringAt(d, "state")
