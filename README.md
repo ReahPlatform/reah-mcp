@@ -202,7 +202,7 @@ format using the [current contract](docs/data-contract.md).
 ## Validate and package
 
 Maintainers need Go 1.25+, Python 3.12+ and Make. macOS builds also need Xcode
-command line tools to embed the optional [Secure Enclave signer](docs/local-client.md#optional-macos-secure-enclave-key):
+command line tools to embed the default [Secure Enclave signer](docs/local-client.md#macos-secure-enclave-keys):
 
 ```sh
 make lint

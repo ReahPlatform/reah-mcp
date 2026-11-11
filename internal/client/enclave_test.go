@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -103,13 +104,19 @@ func TestEnclaveSignatureFormatsAndRequestBinding(t *testing.T) {
 	}
 }
 
-func TestKeyStorageSelectionNeverSilentlyDowngrades(t *testing.T) {
-	if loginKeyStorage("", nil) != softwareKeyStorage {
-		t.Fatal("new profiles no longer default to software")
-	}
+func TestPlatformKeyStorageNeverSilentlyDowngrades(t *testing.T) {
 	s := &Session{DeviceKey: enclaveMetadata(t)}
-	if loginKeyStorage("", s) != enclaveKeyStorage || loginKeyStorage(softwareKeyStorage, s) != softwareKeyStorage {
-		t.Fatal("key storage was silently changed or explicit selection was ignored")
+	for _, platform := range []string{"darwin", "linux", "windows"} {
+		want := softwareKeyStorage
+		if platform == "darwin" {
+			want = enclaveKeyStorage
+		}
+		if loginKeyStorage(platform, nil) != want || loginKeyStorage(platform, &Session{DeviceKey: testKey(t)}) != want {
+			t.Fatal("platform default did not apply to new login or software-key migration")
+		}
+		if loginKeyStorage(platform, s) != enclaveKeyStorage {
+			t.Fatal("hardware profile downgraded on another OS")
+		}
 	}
 	if _, err := generateStoredKey("unknown"); err == nil {
 		t.Fatal("unknown key storage accepted")
@@ -142,17 +149,20 @@ func TestUnsupportedHardwareLoginPreservesExistingGrant(t *testing.T) {
 	defer server.Close()
 	origin = server.URL
 	c, _ := Configure(origin+"/mcp", "preserve-hardware")
-	for _, requested := range []string{"", enclaveKeyStorage} {
-		session := &Session{Version: 1, Server: c.Server, ClientID: "existing", DeviceKey: enclaveMetadata(t), Tokens: &Tokens{"existing-access", "existing-refresh", time.Now().Add(time.Hour).UnixMilli()}}
+	for _, key := range []DeviceKey{enclaveMetadata(t), testKey(t)} {
+		if loginKeyStorage(runtime.GOOS, &Session{DeviceKey: key}) != enclaveKeyStorage {
+			continue
+		}
+		session := &Session{Version: 1, Server: c.Server, ClientID: "existing", DeviceKey: key, Tokens: &Tokens{"existing-access", "existing-refresh", time.Now().Add(time.Hour).UnixMilli()}}
 		store := &memoryStore{s: session}
 		oauth := &OAuth{Config: c, Store: store, HTTP: server.Client()}
-		if err := oauth.LoginWithKeyStorage(context.Background(), true, "financial-operations-v1", requested, func(LoginStep) error {
+		if err := oauth.LoginWithProgress(context.Background(), true, "financial-operations-v1", func(LoginStep) error {
 			t.Error("opened consent without a usable signing backend")
 			return nil
 		}); err == nil {
 			t.Fatal("hardware login silently downgraded")
 		}
-		if store.s != session || store.s.Tokens.RefreshToken != "existing-refresh" || store.s.DeviceKey.Storage != enclaveKeyStorage {
+		if store.s != session || store.s.Tokens.RefreshToken != "existing-refresh" || store.s.DeviceKey != key {
 			t.Fatal("failed hardware initialization replaced existing credentials")
 		}
 	}

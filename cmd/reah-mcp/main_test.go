@@ -35,7 +35,7 @@ func TestCommandContractWithoutAccessingCredentials(t *testing.T) {
 			t.Fatalf("missing production server default: %s", name)
 		}
 	}
-	for _, args := range [][]string{{"serve", "extra"}, {"status", "--server", "http://invalid.example/mcp"}, {"login", "--profile", "../../unsafe"}} {
+	for _, args := range [][]string{{"serve", "extra"}, {"status", "--server", "http://invalid.example/mcp"}, {"login", "--profile", "../../unsafe"}, {"login", "--key-storage", "software"}} {
 		cmd := command()
 		var out bytes.Buffer
 		cmd.SetOut(&out)

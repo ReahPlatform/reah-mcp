@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -205,17 +206,14 @@ type LoginStep struct {
 }
 
 func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile string, progress func(LoginStep) error) error {
-	return o.LoginWithKeyStorage(ctx, enroll, profile, "", progress)
+	return o.loginWithKeyGenerator(ctx, enroll, profile, generateStoredKey, progress)
 }
 
-// An omitted storage choice preserves the existing backend. Switching backends
-// always creates a fresh key and consent; hardware keys cannot import old PEMs.
-func (o *OAuth) LoginWithKeyStorage(ctx context.Context, enroll bool, profile, storage string, progress func(LoginStep) error) error {
+// The generator is injected by protocol tests so they need no physical device.
+// Production always uses generateStoredKey and the platform's fixed policy.
+func (o *OAuth) loginWithKeyGenerator(ctx context.Context, enroll bool, profile string, generate func(string) (DeviceKey, error), progress func(LoginStep) error) error {
 	if profile != "wallet-transfer-v1" && profile != "financial-operations-v1" || !enroll && profile != "wallet-transfer-v1" {
 		return errors.New("use a supported policy profile with --enroll-key for financial signing")
-	}
-	if storage != "" && storage != softwareKeyStorage && storage != enclaveKeyStorage {
-		return errors.New("unsupported key storage; use software or secure-enclave")
 	}
 	page, e := o.discover(ctx, enroll)
 	if e != nil {
@@ -226,8 +224,7 @@ func (o *OAuth) LoginWithKeyStorage(ctx context.Context, enroll bool, profile, s
 		if e != nil {
 			return e
 		}
-		selectedStorage := loginKeyStorage(storage, s)
-		key, e := generateStoredKey(selectedStorage)
+		key, e := generate(loginKeyStorage(runtime.GOOS, s))
 		if e != nil {
 			return e
 		}
@@ -325,12 +322,11 @@ func (o *OAuth) LoginWithKeyStorage(ctx context.Context, enroll bool, profile, s
 	})
 }
 
-func loginKeyStorage(requested string, session *Session) string {
-	if requested != "" {
-		return requested
-	}
-	if session != nil {
-		return keyStorage(session.DeviceKey)
+func loginKeyStorage(platform string, session *Session) string {
+	// Existing software grants remain usable until login creates fresh consent.
+	// Never downgrade a hardware profile copied to another OS into software.
+	if platform == "darwin" || session != nil && keyStorage(session.DeviceKey) == enclaveKeyStorage {
+		return enclaveKeyStorage
 	}
 	return softwareKeyStorage
 }

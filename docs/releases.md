@@ -26,7 +26,9 @@ Both macOS executables embed that helper using the `secureenclave` build tag;
 Linux and Windows builds omit it and reject Secure Enclave requests explicitly.
 The helper is part of the Go executable, so archive checksums and signed update
 metadata cover it too. No separate helper download or runtime compiler is used.
-Plain `go build`/`go install` builds omit this optional component. Verify hardware
+macOS login requires hardware keys by default and offers no software override.
+Plain `go build`/`go install` builds omit the native component and cannot create
+new macOS connections; use `make build` or the full release binary. Verify hardware
 profiles against an upgraded macOS executable before publishing; a virtual CI
 runner can validate compilation and contracts, not physical hardware behavior.
 

@@ -385,7 +385,11 @@ func TestOAuthLoginPKCECallbackAndLogout(t *testing.T) {
 	store := &memoryStore{}
 	o := &OAuth{c, store, server.Client()}
 	completed := make(chan error, 1)
-	e := o.Login(ctx, false, func(address string) error {
+	e := o.loginWithKeyGenerator(ctx, false, "wallet-transfer-v1", func(string) (DeviceKey, error) { return generateKey() }, func(step LoginStep) error {
+		if step.URL == "" {
+			return nil
+		}
+		address := step.URL
 		u, e := url.Parse(address)
 		if e != nil {
 			return e

@@ -2,7 +2,8 @@
 
 The local client is a standalone Go executable. It serves Reah's
 remote catalog over stdio and keeps OAuth tokens and device-key material in
-the operating system credential store. Optional macOS Secure Enclave keys keep
+the operating system credential store. macOS uses Secure Enclave for new keys,
+while Linux and Windows use software keys in their OS credential stores. Hardware keys keep
 the private scalar in hardware and store only a wrapped device-bound reference
 in Keychain. Running it does not require Node.js,
 npm, or an npm account. The hosted read-only connection still requires no local
@@ -10,14 +11,15 @@ program at all.
 
 ## Install
 
-From a checkout, use Go 1.25 or newer:
+From a checkout on macOS, use Go 1.25 or newer and Xcode command line tools:
 
 ```sh
-go build -trimpath -o bin/reah-mcp ./cmd/reah-mcp
+make build
 ./bin/reah-mcp --help
 ```
 
-Users with repository access can install from `main`:
+On Linux and Windows, build with `go build -trimpath -o bin/reah-mcp ./cmd/reah-mcp`.
+Users on those systems with repository access can also install from `main`:
 
 ```sh
 GOPRIVATE=github.com/ReahPlatform/reah-mcp go install github.com/ReahPlatform/reah-mcp/cmd/reah-mcp@main
@@ -32,8 +34,11 @@ No private Reah service modules are needed to build the executable.
 
 On macOS, `make build` also compiles and embeds a universal CryptoKit helper.
 Building this variant requires Xcode command line tools; running the resulting
-binary does not. Plain `go build` and `go install` support software keys and
-OAuth but omit the optional hardware component.
+binary does not. Plain `go build` and `go install` omit the native component:
+on macOS they can use existing software-key profiles for read/signing operations,
+but new login fails explicitly until a full macOS build is installed. They never
+create a new software key as a substitute. Prefer the complete macOS release
+binary when one is available.
 
 Maintainers on macOS can build six standalone archives for macOS, Linux and Windows
 (ARM64 and AMD64) with `make release-go VERSION=v0.1.0`. Once a checked GitHub
@@ -104,26 +109,28 @@ credential-store prompt may appear; subsequent access follows the OS policy.
 reah-mcp login --profile default
 ```
 
-## Optional macOS Secure Enclave key
+## macOS Secure Enclave keys
 
-On a physical Mac with Secure Enclave (Apple Silicon or a compatible Intel Mac
-with T2), use a macOS binary built with `make build` or a release containing this
-feature. The helper targets macOS 12 or newer; actual hardware availability is
-checked when creating or signing with a key.
+On macOS, every new login uses a Secure Enclave key automatically, with no
+storage selector or software fallback. Use a macOS binary built with `make build`
+or a release containing this feature. All Apple silicon Macs have Secure Enclave;
+Intel availability depends on the security chip and OS. The helper targets macOS
+12 or newer and checks CryptoKit availability at runtime rather than using a
+model-name allowlist. Virtual machines may not expose hardware access.
 
 ```sh
-reah-mcp login --profile enclave --key-storage secure-enclave \
+reah-mcp login --profile enclave \
   --enroll-key --policy-profile financial-operations-v1
 reah-mcp status --profile enclave --check
 reah-mcp serve --profile enclave
 ```
 
-`--key-storage` is a login option. A new profile defaults to `software`; omitting
-it on subsequent logins preserves that profile's backend. Login always replaces
-the key and OAuth grant. Existing software private keys cannot be imported into
-Secure Enclave: switching requires fresh browser consent and user-confirmed
-credential registration. Use a separate profile to trial hardware without
-replacing an existing connection. Staging trials must also specify
+Existing software-key profiles remain usable until a new login. Login always
+replaces the key and OAuth grant; on macOS it generates a hardware key even if
+the previous grant used a software key. Software private keys cannot be imported
+into Secure Enclave, so migration requires fresh browser consent and, for
+financial access, user-confirmed credential registration. Use a separate profile
+to trial hardware without replacing an existing connection. Staging trials must also specify
 `--server https://platform.stg.reah.com/mcp` on every command.
 
 The hardware key uses P-256 and the existing enrollment and signing protocols;
@@ -159,6 +166,9 @@ not a wallet recovery key. Hardware protection reduces private-key extraction;
 malware able to run as the user may still request signatures on that Mac. There
 is no hardware-attestation guarantee to the server. Browser consent, live
 permissions, approval policies, transaction limits and expiry remain required.
+Macs without available Secure Enclave cannot create new local-client connections;
+the hosted read-only MCP connection remains available without a local key.
+Copying a hardware profile to Linux or Windows never downgrades it to software.
 
 For an isolated, offline physical-device test from a checkout:
 
