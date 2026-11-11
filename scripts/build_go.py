@@ -13,6 +13,8 @@ import tarfile
 import tempfile
 import zipfile
 
+from build_enclave import build as build_enclave
+
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--version", required=True)
@@ -47,6 +49,7 @@ manifest = {
     "expiresAt": (published + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
     "targets": {},
 }
+build_enclave(root)
 for platform in ("darwin", "linux", "windows"):
     for arch in ("amd64", "arm64"):
         name = "reah-mcp" + (".exe" if platform == "windows" else "")
@@ -54,7 +57,8 @@ for platform in ("darwin", "linux", "windows"):
         with tempfile.TemporaryDirectory() as work:
             binary = Path(work) / name
             env = {**os.environ, "GOOS": platform, "GOARCH": arch, "CGO_ENABLED": "0"}
-            subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-ldflags",
+            tags = ["-tags", "secureenclave"] if platform == "darwin" else []
+            subprocess.run(["go", "build", *tags, "-trimpath", "-buildvcs=false", "-ldflags",
                             flags, "-o", str(binary),
                             "./cmd/reah-mcp"], cwd=root, env=env, check=True)
             if platform == "windows":

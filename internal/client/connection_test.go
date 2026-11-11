@@ -124,7 +124,7 @@ func TestOAuthStagesDistinguishConsentAndFinancialRegistration(t *testing.T) {
 	o = &OAuth{c, &memoryStore{}, server.Client()}
 	var stages []string
 	callbackDone := make(chan error, 1)
-	err := o.LoginWithProgress(context.Background(), true, "wallet-transfer-v1", func(step LoginStep) error {
+	err := o.loginWithKeyGenerator(context.Background(), true, "wallet-transfer-v1", func(*Session) (DeviceKey, error) { return generateKey() }, func(step LoginStep) error {
 		stages = append(stages, step.Stage)
 		if step.Stage == "oauth_consent_required" {
 			u, _ := url.Parse(step.URL)

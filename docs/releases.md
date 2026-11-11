@@ -4,7 +4,8 @@ Go module versions use root SemVer tags such as `v0.1.0`. Hosted plugin
 manifests keep their own version; a client release does not change them.
 Do not reuse a tag or overwrite a release archive after distribution.
 
-From a clean checkout of the intended `main` commit:
+From a clean checkout of the intended `main` commit on macOS with Xcode command
+line tools, Go and Python installed:
 
 ```sh
 make lint
@@ -19,6 +20,20 @@ with that existing tag. The workflow verifies the tag is on main, runs checks,
 builds macOS/Linux/Windows clients for AMD64/ARM64 with CGO disabled, verifies
 SHA-256 checksums, and creates a **draft** GitHub release. Review and publish the
 draft separately. No release happens on an ordinary push.
+
+The build job runs on macOS to compile the universal native CryptoKit helper.
+Both macOS executables embed that helper using the `secureenclave` build tag;
+Linux and Windows builds omit it and reject Secure Enclave requests explicitly.
+The helper is part of the Go executable, so archive checksums and signed update
+metadata cover it too. No separate helper download or runtime compiler is used.
+macOS login automatically uses hardware keys when the native API reports support;
+explicitly unsupported Macs retain software keys in Keychain. Native probe or
+creation failures never trigger fallback, and existing hardware profiles never
+downgrade. There is no manual storage override.
+Plain `go build`/`go install` builds omit the native component and cannot create
+new macOS connections; use `make build` or the full release binary. Verify hardware
+profiles against an upgraded macOS executable before publishing; a virtual CI
+runner can validate compilation and contracts, not physical hardware behavior.
 
 Go downloads require no npm organization or token. This repository is private,
 so its source and release downloads require GitHub repository access. Do not
