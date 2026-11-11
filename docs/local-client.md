@@ -225,9 +225,13 @@ revokes the whole connection and removes the local credentials and device key.
 If revocation cannot be confirmed, local access stays disabled and the command
 directs you to disconnect the app in Reah Settings.
 
-The default server is `https://platform.stg.reah.com/mcp`. Use matching `--server`
-and `--profile` arguments for every command and the host configuration. Profiles
-isolate clients, credentials and keys. Tokens and private keys live under the
+The default server is production: `https://platform.reah.com/mcp`. Use matching
+`--server` and `--profile` arguments for every command and the host configuration.
+Server URLs and profiles isolate clients, credentials and keys. Existing staging credentials are not
+migrated or reused: run `reah-mcp login` to authorize production. To manage a
+staging connection explicitly, pass `--server https://platform.stg.reah.com/mcp`
+with its original `--profile` to every command, including `status` and `logout`.
+Tokens and private keys live under the
 `Reah MCP Go` OS credential-store namespace. `~/.reah-mcp-go` contains only
 coordination files and locks, never credentials. The program does not read
 Codex's MCP credential store. If migrating from the retired npm client, disconnect
@@ -384,7 +388,7 @@ and read calls, rotating refresh, changed business selection and revocation
 against a simulated OAuth/Gateway service. Financial tests cover exact protobuf
 intent signing, the two-stage execution protocol, signed provider requests,
 argument tampering, missing credentials and ambiguous outcomes. They do not access your OS vault or
-real financial data. A live staging login is a separate manual verification.
+real financial data. A live login is a separate manual verification.
 
 The hosted plugin must not be changed to an unpublished local executable.
 

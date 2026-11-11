@@ -3,7 +3,7 @@
   "mcpServers": {
     "reah": {
       "type": "http",
-      "url": "https://platform.stg.reah.com/mcp"
+      "url": "https://platform.reah.com/mcp"
     }
   }
 }

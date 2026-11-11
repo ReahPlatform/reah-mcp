@@ -31,6 +31,9 @@ func TestCommandContractWithoutAccessingCredentials(t *testing.T) {
 		if !strings.Contains(out.String(), "--profile") || !strings.Contains(out.String(), "--server") {
 			t.Fatalf("missing shared flags: %s", name)
 		}
+		if !strings.Contains(out.String(), `default "https://platform.reah.com/mcp"`) {
+			t.Fatalf("missing production server default: %s", name)
+		}
 	}
 	for _, args := range [][]string{{"serve", "extra"}, {"status", "--server", "http://invalid.example/mcp"}, {"login", "--profile", "../../unsafe"}} {
 		cmd := command()

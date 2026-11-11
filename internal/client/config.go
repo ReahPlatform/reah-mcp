@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-const DefaultServer = "https://platform.stg.reah.com/mcp"
+const ProductionServer = "https://platform.reah.com/mcp"
+const StagingServer = "https://platform.stg.reah.com/mcp"
+const DefaultServer = ProductionServer
 const Scope = "reah.read"
 
 type Config struct{ Server, Origin, Profile, ID string }

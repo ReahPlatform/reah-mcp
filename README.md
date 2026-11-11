@@ -4,11 +4,11 @@ Connect AI assistants to Reah with read-only access by default and optional
 locally signed financial operations. Sign in with your Reah account in the
 browser, choose one or more businesses, and authorize the connection.
 
-**Default environment: staging, for integration testing.** All packaged MCP
+**Default environment: production.** All packaged MCP
 configurations use:
 
 ```text
-https://platform.stg.reah.com/mcp
+https://platform.reah.com/mcp
 ```
 
 The Gateway runs the MCP service and executes predefined GraphQL reads through
@@ -39,14 +39,14 @@ by the client's OAuth flow.
 ### Codex
 
 ```sh
-codex mcp add reah-stg --url https://platform.stg.reah.com/mcp
+codex mcp add reah --url https://platform.reah.com/mcp
 ```
 
 Follow the authorization URL shown by Codex if the browser does not open. To
 start sign-in again for an existing entry:
 
 ```sh
-codex mcp login reah-stg
+codex mcp login reah
 ```
 
 Restart the chat or reload its MCP connection if tools added during the chat do
@@ -55,7 +55,7 @@ not appear yet.
 ### Claude Code
 
 ```sh
-claude mcp add --transport http reah-stg https://platform.stg.reah.com/mcp
+claude mcp add --transport http reah https://platform.reah.com/mcp
 ```
 
 Open `/mcp` in Claude Code and authenticate the Reah connection. See the
@@ -76,15 +76,20 @@ Merge the following into your project's `.cursor/mcp.json` or your user-level
 ```json
 {
   "mcpServers": {
-    "reah-stg": {
-      "url": "https://platform.stg.reah.com/mcp"
+    "reah": {
+      "url": "https://platform.reah.com/mcp"
     }
   }
 }
 ```
 
 See the [Cursor MCP documentation](https://cursor.com/docs/mcp). The packaged
-configuration is also available in [examples/staging.mcp.json](examples/staging.mcp.json).
+configuration is also available in [examples/production.mcp.json](examples/production.mcp.json).
+
+Existing staging connections remain separate from production. Add and authorize
+the production connection with your production Reah account; staging credentials
+are not reused. Repository access is still required for plugin and source
+installation.
 
 ## Authorization and business selection
 
@@ -137,7 +142,7 @@ Only the current business Owner can edit Agent transaction limits. OAuth
 
 ## Tools and financial values
 
-The hosted service provides **20 tools: 18 business reads and 2 discovery tools**.
+The hosted connection exposes the read tools available on the connected server.
 See the [tool reference](docs/tools.md) for names, parameters, and pagination, and
 the [data contract](docs/data-contract.md) for units, normalized results, and
 coverage limits. The connected server's tool schemas and `reah_catalog` are the
@@ -157,7 +162,7 @@ also packages the portable [`reah-mcp`](skills/reah-mcp/SKILL.md) skill for
 financial analysis with read-only MCP tools.
 
 Plugin installation requires access to this GitHub repository. The plugin
-already includes the staging MCP connection; choose either plugin installation
+already includes the production MCP connection; choose either plugin installation
 or manual MCP setup to avoid duplicate connections.
 
 Claude Code:
@@ -182,7 +187,7 @@ See [Cursor's local plugin guide](https://cursor.com/docs/plugins#test-plugins-l
 
 ## Migrate from the local server
 
-Version 0.3 replaces the local Go server with the hosted staging connection.
+Version 0.3 replaces the local Go server with the hosted connection.
 Remove the old `command: reah-mcp` entry before adding the URL or installing the
 updated plugin. Remove its environment settings and any manually configured
 Authorization header; OAuth now manages the connection. The legacy local server
@@ -204,10 +209,10 @@ make test
 make build
 ```
 
-Checks cover the Go client, manifests, staging URLs, credential-free configuration,
+Checks cover the Go client, manifests, production URLs, credential-free configuration,
 skill links, and the Codex plugin mirror. Tests exercise OAuth, local signing,
 MCP transport, rejected configurations and archive contents. Build writes the
-local executable to `bin/reah-mcp` and `dist/reah-0.3.1.zip` with documentation,
+local executable to `bin/reah-mcp` and `dist/reah-0.3.2.zip` with documentation,
 manifests, and the analysis skill, resolving the Codex mirror's symlinks into
 portable files.
 It does not build or deploy a server. Runtime authentication, permissions, and
