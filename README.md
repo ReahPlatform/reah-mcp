@@ -116,7 +116,7 @@ across authorized businesses, the assistant makes separate calls for each.
 Use the [local Go client](docs/local-client.md#signing-boundary) for financial
 operations; the hosted URL and packaged plugins remain read-only. The local
 connection includes reads and can additionally request wallet transfers,
-swaps/conversions, USD ACH/Fedwire payouts, supported internal Banking operations
+swaps/conversions, bank-funded USD ACH/WIRE exact-input payouts, supported internal Banking operations
 and Smart Balance funding/Add/Withdraw with the explicit
 `financial-operations-v1` profile. Availability depends on the live server catalog
 and supported signing protocols.

@@ -62,6 +62,7 @@ func TestConvertRejectsUnsupportedTerms(t *testing.T) {
 		"missing floor":            func(a document) { delete(a["executionConstraint"].(document), "minimumReceive") },
 		"zero floor":               func(a document) { a["executionConstraint"].(document)["minimumReceive"] = "0" },
 		"negative percentage":      func(a document) { a["executionConstraint"].(document)["percentage"] = "-1" },
+		"percentage precision":     func(a document) { a["executionConstraint"].(document)["percentage"] = "0.875" },
 		"oversized percentage":     func(a document) { a["executionConstraint"].(document)["percentage"] = "101" },
 		"floor precision":          func(a document) { a["executionConstraint"].(document)["minimumReceive"] = "0.0025001" },
 		"target mismatch":          func(a document) { a["amountMode"], a["requestedTargetAmount"] = "MINIMUM_OUTPUT", "0.003" },

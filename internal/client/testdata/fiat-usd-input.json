@@ -1,0 +1,50 @@
+{
+  "entityId": "11111111-1111-4111-8111-111111111111",
+  "bankingAccountId": "11111111-1111-4111-8111-111111111111",
+  "requestId": "22222222-2222-4222-8222-222222222222",
+  "usdAmountMinor": "10000",
+  "receivedFiatCurrency": "USD",
+  "recipient": {
+    "manual": {
+      "rail": "ACH",
+      "destinationName": "Supplier",
+      "accountNumber": "123456789",
+      "routingNumber": "021000021",
+      "accountType": "checking",
+      "accountHolderName": "Supplier LLC",
+      "accountHolderType": "business",
+      "bankName": "Example Bank",
+      "destinationBankAddress": {
+        "street1": "1 Market St",
+        "city": "San Francisco",
+        "region": "CA",
+        "postalCode": "94105",
+        "country": "US"
+      },
+      "accountHolderAddress": {
+        "street1": "1 Market St",
+        "city": "San Francisco",
+        "region": "CA",
+        "postalCode": "94105",
+        "country": "US"
+      },
+      "partyType": "third_party",
+      "relationship": "vendor",
+      "naicsCode": "541511"
+    }
+  },
+  "amountMode": "EXACT_IN",
+  "pointsPreference": "NONE",
+  "minReceivedFiatAmountMinor": "9900",
+  "estimatedReceivedFiatAmountMinor": "9900",
+  "financialContext": {
+    "approvalDetailsJson": "{\"bankingFiatWithdrawal\":{\"v\":15,\"bankingAccountId\":\"11111111-1111-4111-8111-111111111111\",\"amountMinor\":\"10000\",\"currency\":\"USD\",\"currencyScale\":\"2\",\"settlementAddress\":\"0x1111111111111111111111111111111111111111\",\"rail\":\"ach\",\"destinationName\":\"Supplier\",\"accountNumber\":\"123456789\",\"routingNumber\":\"021000021\",\"accountType\":\"checking\",\"accountHolderName\":\"Supplier LLC\",\"accountHolderType\":\"business\",\"bankName\":\"Example Bank\",\"bankAddress\":{\"street1\":\"1 Market St\",\"city\":\"San Francisco\",\"region\":\"CA\",\"postalCode\":\"94105\",\"country\":\"US\"},\"accountHolderAddress\":{\"street1\":\"1 Market St\",\"city\":\"San Francisco\",\"region\":\"CA\",\"postalCode\":\"94105\",\"country\":\"US\"},\"usdAmountMinor\":\"10000\",\"receivedFiatCurrency\":\"USD\",\"receivedFiatCurrencyScale\":\"2\",\"minReceivedFiatAmountMinor\":\"9900\",\"estimatedReceivedFiatAmountMinor\":\"9900\",\"railFeeAmountMinor\":\"100\",\"amountMode\":\"exact_input\",\"seismicHolderAddressRequirementResolved\":true,\"seismicHolderAddressRequired\":true,\"partyType\":\"third_party\",\"relationship\":\"vendor\",\"naicsCode\":\"541511\",\"fromTo\":{\"from\":[{\"partyType\":\"PARTY_TYPE_ADDRESS\",\"address\":\"0x1111111111111111111111111111111111111111\",\"instrumentId\":\"11111111-1111-4111-8111-111111111111\",\"asset\":\"eip155:8453/erc20:0x3333333333333333333333333333333333333333\",\"amount\":\"100000000\"}],\"to\":[]}}}",
+    "settlement": {
+      "address": "0x1111111111111111111111111111111111111111",
+      "instrumentId": "11111111-1111-4111-8111-111111111111",
+      "networkId": "22222222-2222-4222-8222-222222222222",
+      "asset": "eip155:8453/erc20:0x3333333333333333333333333333333333333333",
+      "decimals": 6
+    }
+  }
+}

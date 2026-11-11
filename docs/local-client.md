@@ -151,7 +151,7 @@ cross-chain crypto converts using v4 intents, in exact-input or minimum-output
 mode. Smart Balance is restricted to exact-input ERC-20 funding from Ethereum/Base
 to Tempo with an owned synchronous ERC-4626/allocator vault. It also supports existing asset-absent Banking internal Send v1 quotes paid by Gas
 Station and Web-equivalent bank execution through compatible Gateway/Hodor
-servers. Distinct adapters also support USD ACH/Fedwire withdrawals and owned
+servers. A distinct fiat adapter supports bank-funded USD ACH/WIRE exact-input payouts from Base six-decimal settlement with Points NONE; provider routing and recipient normalization remain server-owned. Historical USD withdrawal creation is retired. Other fiat currencies, exact-output, direct-wallet fiat, document uploads, recipient edits, receipt/accounting options and local Bank-crypto signing are not supported. Distinct adapters also support owned
 Smart Balance Add/Withdraw. Smart Balance-funded transfers require the financial
 profile and an exact vault ID. Bank-paid internal gas, Points, scheduled and
 exact-output shapes remain closed. A new tool using an already supported

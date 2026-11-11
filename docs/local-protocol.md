@@ -136,10 +136,7 @@ This bank path trusts Ledger's transaction semantics as Web does. It neither
 changes existing Ledger quotes nor claims independent constructed-transaction
 comparison or original-attempt binding. Wallet and convert guards remain
 separate. Client support does not establish deployment, actual execution or
-settlement. This adapter does not cover bank-paid internal gas. USD payouts use
-the distinct protocol below; other fiat shapes remain unsupported locally.
-Schemas, mappings and preparation stay local in the client; no remote templates
-or server-preparation RPC are used.
+settlement. This adapter does not cover bank-paid internal gas. New USD payouts use the provider-neutral fiat protocol below; other fiat shapes remain unsupported locally. Gateway owns preparation and financial normalization; the local client verifies the closed structured signing contract and never signs arbitrary provider templates.
 
 
 ### USD and Smart Balance protocols
@@ -165,24 +162,20 @@ ID/expiry. Check `depositEnabled`/`redeemEnabled`, freshness, principal and gas
 balances before requesting approval. `totalBalance` overlaps Wallet and Smart
 Balance; never add all three. Add and Withdraw retain opposite directions.
 
-For USD, the context additionally requires `targetInstrumentId` and
-`settlementAddress` from `reah_get_usd_withdrawal_context` for the exact account
-and ACH/Fedwire rail. Copy its `approvalDetailsVersion` into details `v`; the
-legacy Dakota target may differ from Banking settlement backing, so
-`reah_get_bank_account_metadata` is not a substitute. Supply the complete v1/v2 `bankingUsdWithdrawal` details using those identities, a positive
-integer USD-cent amount, lowercase rail, resolved bank/holder names, account
-number/type, routing number, both addresses and any saved contact IDs. Manual
-recipients must match every submitted bank/address field; saved recipients
-must match the verified contact and bank-account IDs. Obtain normalized saved
-`recipientTerms` from `reah_get_contact_bank_metadata` for the exact contact,
-bank-account and rail. Copy these terms unchanged, including both addresses,
-holder classification and stored first/last names. Never substitute Contact.name
-or infer holder type from Contact.type; the Gateway mirrors Ledger normalization.
-Missing route or recipient metadata means unavailable, not permission to guess.
-The settlement address is a destination, not custody signing authority.
+For historical USD v1/v2 records, the legacy adapter remains available only when a compatible server explicitly advertises that protocol. Current Ledger retires the old USD creation RPC; current Gateway no longer advertises its request/context tools. Do not use the old entry point for new payouts.
+
+### Provider-neutral bank-funded USD protocol
+
+`approval-fiat-withdraw-v1` signs `BankingFiatWithdrawalDetails` v9 (Dakota) or v15 (Seismic), through the existing provider-neutral fiat API. It requires the financial profile, bank-funded USD `EXACT_IN`, `Points NONE`, Base six-decimal settlement, and ACH/WIRE. Call `reah_prepare_bank_fiat_withdraw` with a stable request UUID, gross USD cents and a saved or manual recipient. Copy its `input` and `financialContext` unchanged into the advertised request tool. The request UUID is the signed nonce, and context is stripped before dispatch.
+
+Preparation resolves the actual `payoutRoutes.provider`, independently of the account provider, and reads the existing settlement, contact, holder-address and source-amount quote APIs. Missing saved recipient ownership or provider metadata stops preparation; the client does not infer it. All resolved recipient fields, both addresses, party/holder classification, industry, payment reason/reference, notes, source identity, gross source debit and receive floor enter the exact intent. WIRE maps to the canonical `fedwire` approval rail. Dakota USD ACH does not accept a payment reference. Seismic accepts up to 128 letters, digits, spaces, hyphens and colons; Dakota WIRE up to 35 letters, digits, spaces, commas and periods.
+
+The rail fee is a quote estimate already included in the gross/receive terms, not another debit. The USD Web exact-payout identity (`estimate == gross - rail fee`, scale two) preserves the exact receive amount. Otherwise bank slippage defaults to 1%, at most 3%, with at most two decimal places; alternatively supply an explicit receive floor within that bound. The server floors at recipient smallest-unit precision. Execution re-quotes and enforces the signed floor. No provider expiry is invented.
+
+The adapter excludes FX, exact-output, direct-wallet funding, Points, payment documents/invoices, contact updates, receipt/accounting options and user schedules. `recipientEmail` is existing business metadata, not notification consent. These exclusions are checked before signing; a quote does not imply a supported local execution adapter.
 
 Gateway compares the signed terms against its private original canonical
-approval before binding Ledger's returned raw request IDs. USD uses one immutable signer group of at most 16 backing-source digests;
+approval before binding Ledger's returned raw request IDs. Bank-funded fiat uses one immutable slot-zero Permit2 signer group, bound to the approved source debit and recipient; historical USD keeps its existing backing-source group;
 Smart-funded send uses one immutable signer group; Add/Withdraw permit at most two groups
 with distinct approval slots. Hodor authenticates the exact original intent,
 live financial credential, Conductor execution authorization and provider body,
@@ -191,3 +184,16 @@ Web trust boundary: Ledger constructs raw business transactions; the client
 does not reconstruct raw digests. Reconcile the original approval after any
 unknown outcome. These protocols require coordinated Gateway/Hodor/Ledger
 versions and do not establish deployment or successful provider settlement.
+
+
+### Parameter alignment with Web
+
+| Route | Amount and protection | Fees, metadata and limits |
+| --- | --- | --- |
+| Wallet send | Exact atomic amount at instrument decimals; explicit source/network/asset/bucket and recipient | Explicit supported gas payer, memo and notes; no swap slippage; local EVM only |
+| Crypto convert/bridge | Exact-input/minimum-output v4 intent; preserve returned `suggestedConstraint.minimumReceive`; custom percentages have at most two decimal places | Preserve quote source and funding bucket; token gas includes exact chain, contract and decimals; local Points/exact-output remain closed |
+| Bank crypto deposit/withdraw | Existing Agent quote projection; deposit same-asset receive is fee-net | Withdrawal `routeBilling` is aligned by route array position, not ID; principal includes platform fees, additional bank gas and Gas Station charges stay separate; null is unknown. Local write adapters remain unavailable |
+| Bank-funded fiat | Gross USD cents; Web-equivalent exact payout or signed slippage floor | Actual route provider, recipient ownership/addresses, reference and reason; quoted rail fee is never deducted twice |
+| Smart Balance | Existing owned synchronous vault hierarchy, exact source and explicit gas; no swap slippage for Add/Withdraw | Distinct Add/Withdraw direction and immutable signer groups; unsupported vaults/routes stay closed |
+
+Quote freshness is not settlement or available funds. Preserve real quote IDs and expiry when supplied (including internal Banking and Points). The normal Web convert review uses a 60-second refresh policy; this is not a provider expiry. Refresh a stale quote before asking for a new approval; never replace the original approval, request ID or signed terms when recovering an unknown outcome. Receipt references, bank payment references and notes are distinct; unsupported receipt/accounting fields must use the existing human flow.

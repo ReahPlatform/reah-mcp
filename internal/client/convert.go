@@ -143,7 +143,7 @@ func convertIntent(key DeviceKey, c SigningContext, args document, now time.Time
 	}
 	percentage, floor := stringAt(constraint, "percentage"), stringAt(constraint, "minimumReceive")
 	p, valid := new(big.Rat).SetString(percentage)
-	if !plainDecimal.MatchString(percentage) || !valid || p.Sign() < 0 || p.Cmp(big.NewRat(100, 1)) > 0 {
+	if !plainDecimal.MatchString(percentage) || strings.Contains(percentage, ".") && len(strings.SplitN(percentage, ".", 2)[1]) > 2 || !valid || p.Sign() < 0 || p.Cmp(big.NewRat(100, 1)) > 0 {
 		return nil, nil, bad
 	}
 	sourceDecimals, sourceOK := contextDecimals(context, "sourceDecimals")

@@ -33,7 +33,7 @@ func localProtocol(t *mcp.Tool) (protocol, bool) {
 	if p.Mode == "internal" || p.Mode == "proxy" {
 		return p, true
 	}
-	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "approval-financial-v1", "turnkey-execution-v1", "approval-smart-add-v1", "approval-smart-withdraw-v1", "approval-usd-withdraw-v1"}, p.Signing) {
+	if p.Mode == "signed" && slices.Contains([]string{"approval-send-v2", "approval-financial-v1", "turnkey-execution-v1", "approval-smart-add-v1", "approval-smart-withdraw-v1", "approval-usd-withdraw-v1", fiatWithdrawalProtocol}, p.Signing) {
 		return p, true
 	}
 	return protocol{}, true
@@ -76,6 +76,9 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 		if isNewFinancialProtocol(p.Signing) && !newFinancialSchema(schema, p.Signing) {
 			continue
 		}
+		if p.Signing == fiatWithdrawalProtocol && !fiatWithdrawalSchema(schema) {
+			continue
+		}
 		if p.Signing == "approval-financial-v1" && !convertSchema(schema) && !bankTransferSchema(schema) {
 			continue
 		}
@@ -96,7 +99,10 @@ func publicTools(all []*mcp.Tool) ([]*mcp.Tool, error) {
 			schema["required"] = kept
 		}
 		copy := *t
-		if isNewFinancialProtocol(p.Signing) {
+		if p.Signing == fiatWithdrawalProtocol {
+			addFiatWithdrawalContext(schema)
+			copy.Description += " Use input and financialContext from reah_prepare_bank_fiat_withdraw unchanged. This local adapter supports bank-funded USD exact-input ACH/Wire without Points, documents, direct wallet funding or contact updates. Gateway resolves the actual payout route and complete recipient; the client verifies and signs these exact terms without selecting providers or recomputing fees. The gross USD debit already includes applicable quoted fees; never add the rail fee again. A fresh provider quote after approval must honor the signed receive floor. Approval creation does not execute or prove bank settlement. Preserve requestId and reconcile unknown outcomes."
+		} else if isNewFinancialProtocol(p.Signing) {
 			addFinancialContext(schema, p.Signing)
 			copy.Description += " Local signing requires a financial-operations-v1 credential, a stable requestId, exact owned account context and explicit terms. Approval creation never approves or proves execution or settlement. Unknown outcomes require reconciliation of the original approval, without automatic replacement."
 		} else if p.Signing == "approval-financial-v1" && bankTransferSchema(schema) {
@@ -294,7 +300,7 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 		if b, ok := args["business"]; ok && !slices.Contains([]any{"crypto_convert", "bank_crypto_deposit", "bank_crypto_withdraw", "banking_fiat_withdrawal", "bank_internal_transfer", "banking_usd_withdrawal", "add_smart_balance", "withdraw_smart_balance"}, b) {
 			return nil, errors.New("unsupported financial execution business")
 		}
-	} else if format != "approval-send-v2" && format != "approval-financial-v1" && !isNewFinancialProtocol(format) {
+	} else if format != "approval-send-v2" && format != "approval-financial-v1" && format != fiatWithdrawalProtocol && !isNewFinancialProtocol(format) {
 		return nil, errors.New("unsupported local signing protocol")
 	}
 	contextResult, e := call(ctx, "reah_signing_context", document{"entityId": args["entityId"]})
@@ -320,6 +326,14 @@ func callSigned(ctx context.Context, name, format string, args document, key Dev
 			return nil, errors.New("operation outcome is unconfirmed; inspect the original requestId or approvalId before retrying; do not create a replacement")
 		}
 		return out, nil
+	}
+	if format == fiatWithdrawalProtocol {
+		intent, body, err := fiatWithdrawalIntent(key, c, args, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		body["requestSignature"] = intent
+		return submit(body)
 	}
 	if isNewFinancialProtocol(format) {
 		intent, body, err := newFinancialIntent(key, c, args, format, time.Now())
