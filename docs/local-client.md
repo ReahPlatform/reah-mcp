@@ -143,25 +143,24 @@ The Gateway owns the live tool names, schemas, descriptions and availability.
 The local client does not keep a business-tool allowlist. Legacy read-only tools
 work without extra metadata; preparation and signed tools declare the supported
 local protocol through tool `_meta`. Unknown protocol versions are hidden rather
-than being forwarded unsigned. The supported signing formats are wallet transfer intents (`approval-send-v2`)
-and verified execution continuations (`turnkey-execution-v1`). The Go adapter
-also preserves the optional financial `business` discriminator on execution.
-The `approval-financial-v1` adapter additionally supports protected Wallet swaps and
-cross-chain crypto converts across EVM, Solana, Bitcoin mainnet and TRON using v4 intents, in exact-input or minimum-output
-mode. Smart Balance is restricted to exact-input ERC-20 funding from Ethereum/Base
-to Tempo with an owned synchronous ERC-4626/allocator vault. It also supports existing asset-absent Banking internal Send v1 quotes paid by Gas
-Station and Web-equivalent bank execution through compatible Gateway/Hodor
-servers. A distinct fiat adapter supports bank-funded USD source payouts on available currencies/rails, exact-input receive floors or non-USD exact-output with a USD debit cap from Base six-decimal settlement with Points NONE; provider routing and recipient normalization remain server-owned. Historical USD withdrawal creation is retired. Direct-wallet fiat, document uploads, recipient edits and receipt/accounting options are not supported. V2 Bank-crypto deposit/withdraw uses the common v4 signer with verified metadata and complete quote billing. Distinct adapters also support owned
-Smart Balance Add/Withdraw. Smart Balance-funded transfers require the financial
-profile and an exact vault ID. Bank-paid internal gas reuses the frozen quote. Quote-supported Convert Points preserve server terms. Scheduled and
-exact-output shapes remain closed. A new tool using an already supported
-format does not require a local release.
+than being forwarded unsigned. The supported protocols are server-prepared
+approval signing (`approval-prepared-v1`) and verified execution continuations
+(`turnkey-execution-v1`). The client preserves the financial `business`
+discriminator selected from the live schema.
 
-The local client retains OAuth, OS credential storage, exact intent construction,
-operation proofs and verified Turnkey signature continuation. It does not pick
-accounts/networks, calculate amounts or orchestrate balance/fee queries. The
-Agent follows the live tool descriptions for that workflow. Signing-format,
-credential-storage or local security changes still require a client update.
+Gateway owns all business signing formats and publishes their complete Agent
+input schemas, including any `preparationContext`. The client verifies connection,
+entity, original arguments, nonce and lifetime before signing the prepared
+approval. It does not carry financial protobuf descriptors, chain libraries or
+business builders. Adding a business operation or changing its signing details
+within the fixed preparation protocol requires only server updates. The existing
+server-side permissions, supported routes, approvals, limits and execution
+validation still apply.
+
+The Agent follows live tool descriptions to choose accounts/networks, obtain
+quotes and check balances/fees. The client does not orchestrate that workflow or
+change Web/App flows. Changes to the fixed protocol, cryptography or credential
+storage still require a client update.
 See [the local protocol](local-protocol.md) and [tool reference](tools.md).
 
 ## Reconnect and disconnect
@@ -336,57 +335,35 @@ reah-mcp login --enroll-key --policy-profile financial-operations-v1 --profile c
 
 The server must support explicit profile enrollment. An authorized user must
 review and register this new credential. A wallet-only credential cannot convert.
-Follow the authenticated conversion schema, including its local-only
-`convertContext`, and obtain a fresh quote, principal balance and the selected
+Follow the authenticated conversion schema, including its server-owned
+`preparationContext`, and obtain a fresh quote, principal balance and the selected
 payer's gas balance before submitting. Amounts and minimum receive are strings in
 standard asset units; do not reuse transfer minor-unit amounts. Minimum-output
 binds the maximum source budget and the target receipt floor. Retain the original
 request and approval identities, follow normal approval policy, then execute with
 `business: crypto_convert`. Request success does not prove settlement; reconcile
 the original approval and actual transactions. See [the local protocol](local-protocol.md)
-for exact context fields and supported scope.
+and the live tool schema for exact context fields and supported scope.
 
 For internal Banking transfers, obtain a fresh quote, both owned settlement
-identities, actual available source funds and the Gas Station balance first.
-Follow the live schema and supply its local-only `bankTransferContext`. The
-adapter creates an approval by signing the entire frozen `approvalDetailsJson`,
-checking both Banking IDs, addresses, instrument/network/wallet identities,
-exact principal in USD cents and settlement atomic units, and Gas Station
-attribution. Local CAIP-19 asset metadata and decimals help verify the selected
-ERC20 settlement and exact 1:1 USD rescaling; the existing signed quote itself
-uses UUID identities and contains no `asset`. The client never inserts local
-asset metadata into signed details and rejects a populated future asset field.
-The quote expiry gates submission; the admitted approval retains its normal
-approval window. No bank-paid gas split, external payout or arbitrary protobuf
-family is signed. Retain stable `requestId`, `quoteId` and original approval
-identities and reconcile that same operation after an unknown outcome.
+identities and available funds for the selected gas payer. Follow the live schema
+and supply its `preparationContext`. Gateway checks and encodes the exact frozen
+quote, including Banking-paid fee outputs where supported. Preserve the stable
+request ID, quote ID and original approval identity. Preparation and approval
+creation do not prove execution or settlement.
 
-Banking internal execution requires a compatible authenticated Gateway catalog
-that advertises `business: bank_internal_transfer`. Gateway must obtain Hodor's
-private acknowledgment binding the original pending raw request to the original
-signed intent and approval before exposing its signing challenge. The client
-verifies the server-authenticated exact body and signs it through the existing
-execution protocol, retaining the original business, approval and request IDs.
-Hodor checks the exact stamp, live financial key, Conductor authorization and
-fixed approval journal before execution. Unknown outcomes require reconciliation
-of that original operation, without automatic retries or replacements.
+Banking execution uses the existing Hodor private exact-request binding and
+client execution continuation. The client verifies the pinned environment-specific
+Hodor signature before stamping exact provider bytes. The server retains business
+semantics, current credential checks, quotas, fixed approval journals and replay
+protection. Unknown outcomes require reconciliation of the original operation.
 
-This bank path trusts Ledger's transaction semantics at the same boundary as
-Web; it does not claim the independent constructed-transaction comparison used
-for supported wallet and convert paths or an independent original-attempt
-binding. No Ledger or quote changes are required. Server deployment and an
-actual completed bank E2E are separate prerequisites; client support or approval
-completion never proves settlement. Schema mappings and preparation are stored
-and executed in the client, without remote templates or a server-preparation RPC.
-
-The model never supplies signatures, private keys or provider request bodies.
-The program signs an exact connection/entity/operation/arguments proof and a
-Web-compatible protobuf transfer intent. Execution additionally verifies the
-pinned environment-specific Hodor public key. The protobuf schema is pinned from
-Conductor `approval_details.proto` and
-embedded in the executable. Its provenance and the Web-compatible wire fixture
-are documented in [the signing fixtures](signing-schema.md).
-Building and validating the signer does not require a TypeScript generator.
+The Agent never supplies private keys, signatures or provider request bodies.
+Gateway owns financial protobuf schemas and encoding; the client validates the
+stable outer approval envelope. See [signing schema ownership](signing-schema.md).
+Building the signer does not require a TypeScript generator or business schema
+regeneration. A compatible server and client release is required for the prepared
+approval protocol; read-only access remains independent.
 
 Deploy matching Hodor, Backend and Gateway contracts and migrations before
 enabling their separate enrollment, provider-registration and transfer-execution
