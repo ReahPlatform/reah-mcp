@@ -73,3 +73,93 @@ func TestFiatWithdrawalRejectsChangedRecipientSourceAndAmount(t *testing.T) {
 		t.Fatal("wallet credential signed fiat")
 	}
 }
+
+func TestFiatFXUsesIndependentCurrencyUnits(t *testing.T) {
+	key := testKey(t)
+	c := testContext(key, DefaultServer)
+	c.Binding.PolicyProfile = "financial-operations-v1"
+	for _, currency := range []string{"HKD", "JPY", "EUR"} {
+		a := fiatFixture(t)
+		a["receivedFiatCurrency"], a["minReceivedFiatAmountMinor"], a["estimatedReceivedFiatAmountMinor"] = currency, "70000", "71000"
+		ctx := a["financialContext"].(document)
+		var wire document
+		_ = json.Unmarshal([]byte(stringAt(ctx, "approvalDetailsJson")), &wire)
+		d := wire["bankingFiatWithdrawal"].(document)
+		d["currency"], d["receivedFiatCurrency"], d["amountMinor"], d["minReceivedFiatAmountMinor"], d["estimatedReceivedFiatAmountMinor"] = currency, currency, "70000", "70000", "71000"
+		if currency == "JPY" {
+			d["currencyScale"], d["receivedFiatCurrencyScale"] = "0", "0"
+		}
+		raw, _ := json.Marshal(wire)
+		ctx["approvalDetailsJson"] = string(raw)
+		if _, _, err := fiatWithdrawalIntent(key, c, a, time.Now()); err != nil {
+			t.Fatalf("%s receive units incorrectly compared to USD cents: %v", currency, err)
+		}
+		d["receivedFiatCurrencyScale"] = "3"
+		raw, _ = json.Marshal(wire)
+		ctx["approvalDetailsJson"] = string(raw)
+		if _, _, err := fiatWithdrawalIntent(key, c, a, time.Now()); err == nil {
+			t.Fatal("accepted currency scale mismatch")
+		}
+	}
+}
+
+func TestFiatExactOutputBindsCapTargetAndEstimates(t *testing.T) {
+	key := testKey(t)
+	c := testContext(key, DefaultServer)
+	c.Binding.PolicyProfile = "financial-operations-v1"
+	fixture := func() document {
+		a := fiatFixture(t)
+		a["receivedFiatCurrency"], a["amountMode"] = "HKD", "EXACT_OUT"
+		for _, field := range []string{"usdAmountMinor", "minReceivedFiatAmountMinor", "estimatedReceivedFiatAmountMinor"} {
+			delete(a, field)
+		}
+		a["exactReceivedFiatAmountMinor"], a["maxUsdAmountMinor"] = "70000", "10000"
+		ctx := a["financialContext"].(document)
+		var wire document
+		if err := json.Unmarshal([]byte(stringAt(ctx, "approvalDetailsJson")), &wire); err != nil {
+			t.Fatal(err)
+		}
+		d := wire["bankingFiatWithdrawal"].(document)
+		for _, field := range []string{"usdAmountMinor", "minReceivedFiatAmountMinor", "estimatedReceivedFiatAmountMinor"} {
+			delete(d, field)
+		}
+		d["currency"], d["receivedFiatCurrency"], d["amountMode"] = "HKD", "HKD", "exact_output"
+		d["amountMinor"], d["exactReceivedFiatAmountMinor"], d["maxUsdAmountMinor"] = "70000", "70000", "10000"
+		d["estimatedUsdAmountMinor"], d["estimatedInUsdAmountMinor"], d["railFeeAmountMinor"] = "9800", "9600", "100"
+		sender := d["fromTo"].(document)["from"].([]any)[0].(document)
+		sender["maxAmount"] = sender["amount"]
+		delete(sender, "amount")
+		raw, _ := json.Marshal(wire)
+		ctx["approvalDetailsJson"] = string(raw)
+		return a
+	}
+	if _, _, err := fiatWithdrawalIntent(key, c, fixture(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(document){
+		"raised cap":     func(a document) { a["maxUsdAmountMinor"] = "10001" },
+		"changed target": func(a document) { a["exactReceivedFiatAmountMinor"] = "69999" },
+		"mixed mode":     func(a document) { a["usdAmountMinor"] = "10000" },
+		"zero estimate":  func(d document) { d["estimatedInUsdAmountMinor"] = "0" },
+		"over cap":       func(d document) { d["estimatedUsdAmountMinor"] = "10001" },
+		"fee overflow":   func(d document) { d["railFeeAmountMinor"] = "300" },
+		"noncanonical":   func(d document) { d["estimatedUsdAmountMinor"] = "09800" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := fixture()
+			if name == "raised cap" || name == "changed target" || name == "mixed mode" {
+				mutate(a)
+			} else {
+				ctx := a["financialContext"].(document)
+				var wire document
+				_ = json.Unmarshal([]byte(stringAt(ctx, "approvalDetailsJson")), &wire)
+				mutate(wire["bankingFiatWithdrawal"].(document))
+				raw, _ := json.Marshal(wire)
+				ctx["approvalDetailsJson"] = string(raw)
+			}
+			if _, _, err := fiatWithdrawalIntent(key, c, a, time.Now()); err == nil {
+				t.Fatal("accepted altered exact-output terms")
+			}
+		})
+	}
+}

@@ -146,14 +146,14 @@ local protocol through tool `_meta`. Unknown protocol versions are hidden rather
 than being forwarded unsigned. The supported signing formats are wallet transfer intents (`approval-send-v2`)
 and verified execution continuations (`turnkey-execution-v1`). The Go adapter
 also preserves the optional financial `business` discriminator on execution.
-The `approval-financial-v1` adapter additionally supports EVM Wallet swaps and
-cross-chain crypto converts using v4 intents, in exact-input or minimum-output
+The `approval-financial-v1` adapter additionally supports protected Wallet swaps and
+cross-chain crypto converts across EVM, Solana, Bitcoin mainnet and TRON using v4 intents, in exact-input or minimum-output
 mode. Smart Balance is restricted to exact-input ERC-20 funding from Ethereum/Base
 to Tempo with an owned synchronous ERC-4626/allocator vault. It also supports existing asset-absent Banking internal Send v1 quotes paid by Gas
 Station and Web-equivalent bank execution through compatible Gateway/Hodor
-servers. A distinct fiat adapter supports bank-funded USD ACH/WIRE exact-input payouts from Base six-decimal settlement with Points NONE; provider routing and recipient normalization remain server-owned. Historical USD withdrawal creation is retired. Other fiat currencies, exact-output, direct-wallet fiat, document uploads, recipient edits, receipt/accounting options and local Bank-crypto signing are not supported. Distinct adapters also support owned
+servers. A distinct fiat adapter supports bank-funded USD source payouts on available currencies/rails, exact-input receive floors or non-USD exact-output with a USD debit cap from Base six-decimal settlement with Points NONE; provider routing and recipient normalization remain server-owned. Historical USD withdrawal creation is retired. Direct-wallet fiat, document uploads, recipient edits and receipt/accounting options are not supported. V2 Bank-crypto deposit/withdraw uses the common v4 signer with verified metadata and complete quote billing. Distinct adapters also support owned
 Smart Balance Add/Withdraw. Smart Balance-funded transfers require the financial
-profile and an exact vault ID. Bank-paid internal gas, Points, scheduled and
+profile and an exact vault ID. Bank-paid internal gas reuses the frozen quote. Quote-supported Convert Points preserve server terms. Scheduled and
 exact-output shapes remain closed. A new tool using an already supported
 format does not require a local release.
 

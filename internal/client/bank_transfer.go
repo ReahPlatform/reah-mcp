@@ -49,7 +49,7 @@ func addBankTransferContext(schema document) {
 }
 
 func bankTransferIntent(key DeviceKey, c SigningContext, args document, now time.Time) (document, document, error) {
-	bad := errors.New("use the exact unexpired existing Send v1 Banking internal quote with independently verified metadata and Gas Station gas")
+	bad := errors.New("use the exact unexpired existing Send v1 Banking internal quote with independently verified metadata and explicit gas billing")
 	if c.Binding.PolicyProfile != "financial-operations-v1" {
 		return nil, nil, errors.New("Banking transfer requires a newly authorized financial-operations-v1 credential")
 	}
@@ -105,7 +105,7 @@ func bankTransferIntent(key DeviceKey, c SigningContext, args document, now time
 			return nil, nil, bad
 		}
 	}
-	if stringAt(ctx, "amountCents") == "0" || stringAt(ctx, "amountAtomic") == "0" || ctx["amountCents"] != ctx["totalDebitCents"] {
+	if stringAt(ctx, "amountCents") == "0" || stringAt(ctx, "amountAtomic") == "0" {
 		return nil, nil, bad
 	}
 	// The internal Banking quote contract is a 1:1 USD settlement transfer.
@@ -142,14 +142,25 @@ func bankTransferIntent(key DeviceKey, c SigningContext, args document, now time
 			return nil, nil, bad
 		}
 	}
-	if send["amount"] != ctx["amountAtomic"] || send["gasSource"] != "gas_station" || send["gasUsdFee"] != ctx["gasFeeCents"] {
+	total, _ := new(big.Int).SetString(stringAt(ctx, "totalDebitCents"), 10)
+	totalAtomic := new(big.Int).Mul(total, scale).String()
+	if send["amount"] != totalAtomic || send["gasSource"] != "gas_station" || send["gasUsdFee"] != ctx["gasFeeCents"] {
 		return nil, nil, bad
 	}
 	if notes := stringAt(send, "notes"); len(notes) > 4096 || strings.ContainsRune(notes, '\x00') || notes != strings.TrimSpace(notes) {
 		return nil, nil, bad
 	}
 	gas, ok := send["gas"].(map[string]any)
-	if !ok || !allowedBankFields(gas, "usd", "payerAccountType") || gas["usd"] != ctx["gasFeeCents"] || gas["payerAccountType"] != "gas_station" {
+	if !ok || !allowedBankFields(gas, "usd", "payerAccountType", "payerAccountId") || gas["usd"] != ctx["gasFeeCents"] {
+		return nil, nil, bad
+	}
+	bankGas := gas["payerAccountType"] == "banking_account"
+	fee, _ := new(big.Int).SetString(stringAt(ctx, "gasFeeCents"), 10)
+	if bankGas {
+		if gas["payerAccountId"] != ctx["sourceBankingAccountId"] || fee.Sign() <= 0 || new(big.Int).Add(cents, fee).Cmp(total) != 0 {
+			return nil, nil, bad
+		}
+	} else if gas["payerAccountType"] != "gas_station" || gas["payerAccountId"] != nil || cents.Cmp(total) != 0 {
 		return nil, nil, bad
 	}
 	parties, ok := send["fromTo"].(map[string]any)
@@ -158,19 +169,33 @@ func bankTransferIntent(key DeviceKey, c SigningContext, args document, now time
 	}
 	for _, side := range []string{"from", "to"} {
 		entries, ok := parties[side].([]any)
-		if !ok || len(entries) != 1 {
+		count := 1
+		if side == "to" && bankGas {
+			count = 2
+		}
+		if !ok || len(entries) != count {
 			return nil, nil, bad
 		}
 		party, ok := entries[0].(map[string]any)
 		if !ok || !exactFields(party, "partyType", "bankingId", "address", "instrumentId", "amount", "estimatedUsd") {
 			return nil, nil, bad
 		}
-		id, address := ctx["sourceBankingAccountId"], ctx["fromAddress"]
+		id, address, amount := ctx["sourceBankingAccountId"], ctx["fromAddress"], any(totalAtomic)
 		if side == "to" {
-			id, address = ctx["targetBankingAccountId"], ctx["toAddress"]
+			id, address, amount = ctx["targetBankingAccountId"], ctx["toAddress"], ctx["amountAtomic"]
 		}
-		if party["partyType"] != "PARTY_TYPE_BANKING" || party["bankingId"] != id || party["address"] != address || party["instrumentId"] != ctx["instrumentId"] || party["amount"] != ctx["amountAtomic"] || party["estimatedUsd"] != ctx["amountCents"] {
+		if party["partyType"] != "PARTY_TYPE_BANKING" || party["bankingId"] != id || party["address"] != address || party["instrumentId"] != ctx["instrumentId"] || party["amount"] != amount || party["estimatedUsd"] != ctx["amountCents"] {
 			return nil, nil, bad
+		}
+		if count == 2 {
+			p, ok := entries[1].(map[string]any)
+			if !ok || !exactFields(p, "partyType", "address", "instrumentId", "amount", "estimatedUsd") || p["partyType"] != "PARTY_TYPE_ADDRESS" || p["instrumentId"] != ctx["instrumentId"] || p["amount"] != new(big.Int).Mul(fee, scale).String() || p["estimatedUsd"] != ctx["gasFeeCents"] {
+				return nil, nil, bad
+			}
+			address := stringAt(p, "address")
+			if !evmAddress.MatchString(address) || strings.EqualFold(address, "0x0000000000000000000000000000000000000000") || strings.EqualFold(address, stringAt(ctx, "fromAddress")) || strings.EqualFold(address, stringAt(ctx, "toAddress")) {
+				return nil, nil, bad
+			}
 		}
 	}
 	intent, e := approvalIntent(key, c, details, stringAt(args, "requestId"), now)

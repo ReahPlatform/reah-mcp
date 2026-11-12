@@ -227,3 +227,40 @@ func TestBankTransferCatalogShape(t *testing.T) {
 		}
 	}
 }
+
+func bankPaidTransferArgs() document {
+	a := bankTransferArgs()
+	c := a["bankTransferContext"].(document)
+	c["totalDebitCents"] = "1002"
+	mutateBankQuote(a, func(s document) {
+		s["amount"] = "10020000"
+		s["gas"].(document)["payerAccountType"], s["gas"].(document)["payerAccountId"] = "banking_account", testID
+		parties := s["fromTo"].(document)
+		parties["from"].([]any)[0].(document)["amount"] = "10020000"
+		parties["to"] = append(parties["to"].([]any), document{"partyType": "PARTY_TYPE_ADDRESS", "address": "0x4444444444444444444444444444444444444444", "instrumentId": testID, "amount": "20000", "estimatedUsd": "2"})
+	})
+	return a
+}
+
+func TestBankPaidInternalFrozenQuote(t *testing.T) {
+	key := testKey(t)
+	c := testContext(key, DefaultServer)
+	c.Binding.PolicyProfile = "financial-operations-v1"
+	if _, _, err := bankTransferIntent(key, c, bankPaidTransferArgs(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(document){
+		"collector amount": func(s document) { s["fromTo"].(document)["to"].([]any)[1].(document)["amount"] = "20001" },
+		"payer":            func(s document) { s["gas"].(document)["payerAccountId"] = testOtherID },
+		"collector source": func(s document) { s["fromTo"].(document)["to"].([]any)[1].(document)["address"] = s["fromAddress"] },
+		"extra output":     func(s document) { p := s["fromTo"].(document); p["to"] = append(p["to"].([]any), p["to"].([]any)[1]) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := bankPaidTransferArgs()
+			mutateBankQuote(a, mutate)
+			if _, _, err := bankTransferIntent(key, c, a, time.Now()); err == nil {
+				t.Fatal("signed altered fee split")
+			}
+		})
+	}
+}

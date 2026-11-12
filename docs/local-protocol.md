@@ -44,11 +44,11 @@ Supported signing formats:
   automatic submission retries, or loops until settlement are provided.
 
 - `approval-financial-v1`: the supported input shape is Wallet/Smart Balance crypto conversion
-  through Web-compatible v4 intents. Wallet same-chain swaps and cross-chain EVM
+  through Web-compatible v4 intents. Wallet same-chain swaps and cross-chain protected
   converts support `EXACT_INPUT` and `MINIMUM_OUTPUT`. Smart Balance supports
   `EXACT_INPUT` ERC-20 funding from Ethereum/Base to Tempo only, with a verified
   owned synchronous ERC-4626/allocator vault; no Smart same-chain swap,
-  `MINIMUM_OUTPUT` or `EXACT_OUTPUT`. Points, scheduled and `EXACT_OUTPUT` intent families remain unsupported.
+  `MINIMUM_OUTPUT` or `EXACT_OUTPUT`. Quote-supported Points preserve the server quote token and idempotency key; scheduled and crypto `EXACT_OUTPUT` intent families remain unsupported.
   Smart Balance uses explicit `balanceSource=SMART_BALANCE` and an owned
   `smartBalanceVaultId`; absence means Wallet and never an automatic fallback. Capability
   selection uses the authenticated schema, not a business-tool name allowlist.
@@ -117,7 +117,7 @@ Tool names are not used to select this adapter. The context requires:
 
 The accepted frozen details contain only Send v1, exactly one Banking sender
 and one distinct Banking recipient, matching addresses/instrument/principal,
-and Gas Station gas with no Banking payer ID or fee output. Every populated
+and Gas Station gas with no Banking payer ID or fee output, or Banking gas with the source Banking payer ID and one exact fee-collector output. Banking-paid debit equals principal plus the quoted fee; neither output may change. Every populated
 field outside this closed contract is rejected. The complete parsed protobuf
 is signed unchanged with `requestId` as intent nonce. Context stays local; the
 operation proof binds the upstream `entityId`, `quoteId`, `requestId` and exact
@@ -136,7 +136,7 @@ This bank path trusts Ledger's transaction semantics as Web does. It neither
 changes existing Ledger quotes nor claims independent constructed-transaction
 comparison or original-attempt binding. Wallet and convert guards remain
 separate. Client support does not establish deployment, actual execution or
-settlement. This adapter does not cover bank-paid internal gas. New USD payouts use the provider-neutral fiat protocol below; other fiat shapes remain unsupported locally. Gateway owns preparation and financial normalization; the local client verifies the closed structured signing contract and never signs arbitrary provider templates.
+settlement. Banking-paid internal gas reuses the same frozen quote and private request binding. New USD payouts use the provider-neutral fiat protocol below; other fiat shapes remain unsupported locally. Gateway owns preparation and financial normalization; the local client verifies the closed structured signing contract and never signs arbitrary provider templates.
 
 
 ### USD and Smart Balance protocols
@@ -164,15 +164,15 @@ Balance; never add all three. Add and Withdraw retain opposite directions.
 
 For historical USD v1/v2 records, the legacy adapter remains available only when a compatible server explicitly advertises that protocol. Current Ledger retires the old USD creation RPC; current Gateway no longer advertises its request/context tools. Do not use the old entry point for new payouts.
 
-### Provider-neutral bank-funded USD protocol
+### Provider-neutral bank-funded fiat protocol
 
-`approval-fiat-withdraw-v1` signs `BankingFiatWithdrawalDetails` v9 (Dakota) or v15 (Seismic), through the existing provider-neutral fiat API. It requires the financial profile, bank-funded USD `EXACT_IN`, `Points NONE`, Base six-decimal settlement, and ACH/WIRE. Call `reah_prepare_bank_fiat_withdraw` with a stable request UUID, gross USD cents and a saved or manual recipient. Copy its `input` and `financialContext` unchanged into the advertised request tool. The request UUID is the signed nonce, and context is stripped before dispatch.
+`approval-fiat-withdraw-v1` signs `BankingFiatWithdrawalDetails` v9 (Dakota) or v15 (Seismic), through the existing provider-neutral fiat API. It requires the financial profile, a bank-funded USD source, `Points NONE` and Base six-decimal settlement. Available payout currencies and rails come from the exact account payout route. `EXACT_IN` binds a receive floor; non-USD `EXACT_OUT` binds an exact target and maximum USD debit. Call `reah_prepare_bank_fiat_withdraw` with a stable request UUID, gross USD cents and a saved or manual recipient. Copy its `input` and `financialContext` unchanged into the advertised request tool. The request UUID is the signed nonce, and context is stripped before dispatch.
 
 Preparation resolves the actual `payoutRoutes.provider`, independently of the account provider, and reads the existing settlement, contact, holder-address and source-amount quote APIs. Missing saved recipient ownership or provider metadata stops preparation; the client does not infer it. All resolved recipient fields, both addresses, party/holder classification, industry, payment reason/reference, notes, source identity, gross source debit and receive floor enter the exact intent. WIRE maps to the canonical `fedwire` approval rail. Dakota USD ACH does not accept a payment reference. Seismic accepts up to 128 letters, digits, spaces, hyphens and colons; Dakota WIRE up to 35 letters, digits, spaces, commas and periods.
 
 The rail fee is a quote estimate already included in the gross/receive terms, not another debit. The USD Web exact-payout identity (`estimate == gross - rail fee`, scale two) preserves the exact receive amount. Otherwise bank slippage defaults to 1%, at most 3%, with at most two decimal places; alternatively supply an explicit receive floor within that bound. The server floors at recipient smallest-unit precision. Execution re-quotes and enforces the signed floor. No provider expiry is invented.
 
-The adapter excludes FX, exact-output, direct-wallet funding, Points, payment documents/invoices, contact updates, receipt/accounting options and user schedules. `recipientEmail` is existing business metadata, not notification consent. These exclusions are checked before signing; a quote does not imply a supported local execution adapter.
+The adapter excludes direct-wallet funding, Points, payment documents/invoices, contact updates, receipt/accounting options and user schedules. `recipientEmail` is existing business metadata, not notification consent. These exclusions are checked before signing; a quote does not imply a supported local execution adapter.
 
 Gateway compares the signed terms against its private original canonical
 approval before binding Ledger's returned raw request IDs. Bank-funded fiat uses one immutable slot-zero Permit2 signer group, bound to the approved source debit and recipient; historical USD keeps its existing backing-source group;
@@ -191,8 +191,8 @@ versions and do not establish deployment or successful provider settlement.
 | Route | Amount and protection | Fees, metadata and limits |
 | --- | --- | --- |
 | Wallet send | Exact atomic amount at instrument decimals; explicit source/network/asset/bucket and recipient | Explicit supported gas payer, memo and notes; no swap slippage; local EVM only |
-| Crypto convert/bridge | Exact-input/minimum-output v4 intent; preserve returned `suggestedConstraint.minimumReceive`; custom percentages have at most two decimal places | Preserve quote source and funding bucket; token gas includes exact chain, contract and decimals; local Points/exact-output remain closed |
-| Bank crypto deposit/withdraw | Existing Agent quote projection; deposit same-asset receive is fee-net | Withdrawal `routeBilling` is aligned by route array position, not ID; principal includes platform fees, additional bank gas and Gas Station charges stay separate; null is unknown. Local write adapters remain unavailable |
+| Crypto convert/bridge | Exact-input/minimum-output v4 intent; preserve returned `suggestedConstraint.minimumReceive`; custom percentages have at most two decimal places | Preserve quote source and funding bucket; token gas includes exact chain, contract and decimals; quote-supported Points retain the exact token and idempotency key; crypto exact-output remains closed |
+| Bank crypto deposit/withdraw | Existing Agent quote projection; deposit same-asset receive is fee-net | Withdrawal `routeBilling` is aligned by route array position, not ID; principal includes platform fees, additional bank gas and Gas Station charges stay separate; null is unknown. V2 local signing reuses the v4 adapter and binds the full Banking debit; legacy/scheduled routes remain unavailable |
 | Bank-funded fiat | Gross USD cents; Web-equivalent exact payout or signed slippage floor | Actual route provider, recipient ownership/addresses, reference and reason; quoted rail fee is never deducted twice |
 | Smart Balance | Existing owned synchronous vault hierarchy, exact source and explicit gas; no swap slippage for Add/Withdraw | Distinct Add/Withdraw direction and immutable signer groups; unsupported vaults/routes stay closed |
 
@@ -210,3 +210,19 @@ new signing format. A new tool using an existing supported contract needs no
 client tool-name entry; new financial semantics require an explicit adapter
 update. Unknown formats remain hidden. This changes no wire format or Web/App
 flow and does not expand the currently documented capability boundaries.
+
+
+### V2 Banking crypto signing
+
+`approval-financial-v1` recognizes deposit/withdraw schemas by their fields and
+uses the common v4 Convert signer. `bankCryptoContext` supplies verified source
+and target metadata and, for withdrawals, the selected quote's
+`totalBankingDebitUsdCents`. Source principal is expressed in USD cents by the
+business API; the v4 intent binds the complete USD budget in major units.
+Banking-paid gas is included in that budget. Gas Station payment leaves the
+Banking debit equal to the principal. The local context is removed before dispatch.
+Points use the original server quote/reservation flow; the operation proof binds
+the preference, quote token and idempotency key without recalculating fees.
+Non-EVM Convert uses the numeric Ledger chain identities for Solana, Bitcoin
+mainnet and TRON. Token/address case is preserved; Bitcoin source gas is paid
+from the wallet. Actual route availability remains server-owned.

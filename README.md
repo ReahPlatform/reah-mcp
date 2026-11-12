@@ -116,7 +116,7 @@ across authorized businesses, the assistant makes separate calls for each.
 Use the [local Go client](docs/local-client.md#signing-boundary) for financial
 operations; the hosted URL and packaged plugins remain read-only. The local
 connection includes reads and can additionally request wallet transfers,
-swaps/conversions, bank-funded USD ACH/WIRE exact-input payouts, supported internal Banking operations
+swaps/conversions, bank-funded USD source fiat payouts with available currencies/rails and exact-input floors or non-USD exact-output caps, supported internal Banking operations
 and Smart Balance funding/Add/Withdraw with the explicit
 `financial-operations-v1` profile. Availability depends on the live server catalog
 and supported signing protocols.
@@ -215,7 +215,7 @@ financial normalization tests belong to the Gateway and Backend services.
 
 
 The optional local Go client supports internal Banking transfer approvals from
-existing Ledger Send v1 quotes paid by Gas Station using a separately registered
+existing Ledger Send v1 quotes paid by Gas Station or Banking using a separately registered
 financial credential. It preserves the quoted UUID identities and signed fields
 without adding a chain asset. Execution requires an authenticated Gateway catalog
 advertising `bank_internal_transfer` and a compatible Hodor private binding
