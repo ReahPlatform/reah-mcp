@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -26,9 +25,6 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 const testID = "11111111-1111-4111-8111-111111111111"
@@ -125,55 +121,6 @@ func TestConfigure(t *testing.T) {
 	b, _ := Configure(DefaultServer, "other")
 	if a.ID == b.ID {
 		t.Fatal("profiles share vault identity")
-	}
-}
-
-func TestApprovalWireAndSignature(t *testing.T) {
-	key := testKey(t)
-	c := testContext(key, DefaultServer)
-	now := time.Date(2026, 10, 28, 1, 2, 3, 123000000, time.UTC)
-	c.Binding.ExpiresAt = now.Add(time.Hour).Format(time.RFC3339Nano)
-	intent, e := transferIntent(key, c, transferArgs(), now)
-	if e != nil {
-		t.Fatal(e)
-	}
-	verifyText(t, key, stringAt(intent, "payloadBytes"), stringAt(intent, "signature"), false)
-	b, e := base64.StdEncoding.DecodeString(stringAt(intent, "payloadBytes"))
-	if e != nil {
-		t.Fatal(e)
-	}
-	// Golden bytes are produced by the existing TypeScript/Web signing implementation.
-	golden, e := os.ReadFile("testdata/send-v2.base64")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if strings.TrimSpace(string(golden)) != stringAt(intent, "payloadBytes") {
-		t.Fatal("Go intent differs from the TypeScript/Web wire format")
-	}
-	m := dynamicpb.NewMessage(approvalFile.Messages().ByName("SignedApprovalIntent"))
-	if e = proto.Unmarshal(b, m); e != nil {
-		t.Fatal(e)
-	}
-	raw, e := protojson.Marshal(m)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if !strings.Contains(string(raw), `"amount":"15250000"`) {
-		t.Fatalf("minor-unit amount changed: %s", raw)
-	}
-	for _, mutation := range []document{{"amount": "1.5"}, {"gasSource": "AUTO"}, {"requestId": "not-a-uuid"}, {"requestSignature": "supplied"}} {
-		args := transferArgs()
-		for k, v := range mutation {
-			args[k] = v
-		}
-		if _, e = transferIntent(key, c, args, now); e == nil {
-			t.Fatalf("accepted invalid transfer %v", mutation)
-		}
-	}
-	wrong := key
-	wrong.PublicKey = testKey(t).PublicKey
-	if _, e = signText(wrong, "data", false); e == nil {
-		t.Fatal("accepted mismatched private key")
 	}
 }
 
@@ -487,8 +434,8 @@ func TestCatalogAndRemoteReadIntegration(t *testing.T) {
 
 func TestCatalogRejectsUnknownSigning(t *testing.T) {
 	tools := []*mcp.Tool{}
-	for _, format := range []string{"approval-send-v2", "turnkey-execution-v1", "future-format"} {
-		tools = append(tools, &mcp.Tool{Name: format, InputSchema: document{"type": "object", "properties": document{"entityId": document{"type": "string"}, "_proof": document{}, "requestSignature": document{}, "signatures": document{}}, "required": []string{"entityId", "_proof", "requestSignature"}}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": format}}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false}})
+	for _, format := range []string{preparedApprovalProtocol, "turnkey-execution-v1", "future-format", "approval-send-v2"} {
+		tools = append(tools, &mcp.Tool{Name: format, InputSchema: document{"type": "object", "properties": document{"entityId": document{"type": "string"}, "_proof": document{}, "requestSignature": document{}, "signatures": document{}}, "required": []string{"entityId", "_proof", "requestSignature"}}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": format, "inputSchema": document{"type": "object", "additionalProperties": false, "properties": document{"entityId": document{"type": "string"}}}}}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false}})
 	}
 	out, e := publicTools(tools)
 	if e != nil {

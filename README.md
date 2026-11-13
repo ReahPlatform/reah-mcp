@@ -116,7 +116,7 @@ across authorized businesses, the assistant makes separate calls for each.
 Use the [local Go client](docs/local-client.md#signing-boundary) for financial
 operations; the hosted URL and packaged plugins remain read-only. The local
 connection includes reads and can additionally request wallet transfers,
-swaps/conversions, USD ACH/Fedwire payouts, supported internal Banking operations
+swaps/conversions, bank-funded USD source fiat payouts with available currencies/rails and exact-input floors or non-USD exact-output caps, supported internal Banking operations
 and Smart Balance funding/Add/Withdraw with the explicit
 `financial-operations-v1` profile. Availability depends on the live server catalog
 and supported signing protocols.
@@ -214,19 +214,16 @@ It does not build or deploy a server. Runtime authentication, permissions, and
 financial normalization tests belong to the Gateway and Backend services.
 
 
-The optional local Go client supports internal Banking transfer approvals from
-existing Ledger Send v1 quotes paid by Gas Station using a separately registered
-financial credential. It preserves the quoted UUID identities and signed fields
-without adding a chain asset. Execution requires an authenticated Gateway catalog
-advertising `bank_internal_transfer` and a compatible Hodor private binding
-acknowledgment. This bank route trusts Ledger transaction semantics as the Web
-flow does; wallet and convert construction checks remain separate. Keep the same
-business, approval and signing-request identities across continuations, and
-reconcile unknown outcomes without retrying or replacing the operation. External
-bank payouts and bank-paid internal gas remain outside this adapter. Business
-schemas and preparation stay in the client; no remote templates or
-server-preparation RPC are used. Client support alone does not establish server
-deployment, completed execution or settlement.
+The optional local Go client signs Gateway-prepared approvals and verified
+execution continuations using an explicitly registered device credential.
+Gateway owns business schemas, transaction encoding and preparation. The client
+checks fixed identity, original-argument, nonce and lifetime bindings without a
+business-tool allowlist or financial protobuf descriptor. Agents follow live
+schemas and descriptions to choose accounts, obtain quotes and check balances.
+Existing server permissions, approvals, quotas and Hodor execution validation
+still apply. Preserve original request and approval IDs; reconcile uncertain
+outcomes without automatic resubmission. Client support alone does not establish
+server deployment, completed execution or settlement.
 See [the local client guide](docs/local-client.md).
 
 The Go client separates OAuth consent from user-confirmed credential

@@ -176,7 +176,7 @@ func TestLiveStatusVerifiesEveryBusinessAndFailsClosed(t *testing.T) {
 				return nil, nil
 			})
 			if scenario != "catalog_read_only" {
-				upstream.AddTool(&mcp.Tool{Name: "future_signed_tool", InputSchema: document{"type": "object"}, Annotations: &mcp.ToolAnnotations{}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": "approval-send-v2"}}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				upstream.AddTool(&mcp.Tool{Name: "future_signed_tool", InputSchema: document{"type": "object"}, Annotations: &mcp.ToolAnnotations{}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": preparedApprovalProtocol, "inputSchema": document{"type": "object", "additionalProperties": false, "properties": document{}}}}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 					t.Fatal("diagnosis attempted a financial operation")
 					return nil, nil
 				})
