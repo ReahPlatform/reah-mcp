@@ -138,7 +138,7 @@ func TestMixedStatusVerifiesEnrolledSubsetAndKeepsOtherReadAccess(t *testing.T) 
 			upstream.AddTool(&mcp.Tool{Name: "read", InputSchema: document{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return &mcp.CallToolResult{Content: []mcp.Content{}, StructuredContent: document{"entities": []string{testID, testOtherID}}}, nil
 			})
-			upstream.AddTool(&mcp.Tool{Name: "test_signed", InputSchema: document{"type": "object"}, Annotations: &mcp.ToolAnnotations{}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": "approval-send-v2"}}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			upstream.AddTool(&mcp.Tool{Name: "test_signed", InputSchema: document{"type": "object"}, Annotations: &mcp.ToolAnnotations{}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": preparedApprovalProtocol, "inputSchema": document{"type": "object", "additionalProperties": false, "properties": document{}}}}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				financialCalls.Add(1)
 				return nil, nil
 			})
