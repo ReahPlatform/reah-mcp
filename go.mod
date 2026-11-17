@@ -8,7 +8,6 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
-	google.golang.org/protobuf v1.36.11
 )
 
 require (

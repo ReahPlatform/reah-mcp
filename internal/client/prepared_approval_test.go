@@ -10,25 +10,14 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func preparedFixture(t *testing.T, c SigningContext, args document, now time.Time) document {
 	t.Helper()
 	expires, _ := time.Parse(time.RFC3339Nano, c.Binding.ExpiresAt)
-	fields := map[protowire.Number][]byte{1: {10, 1, 1}, 2: []byte(c.Binding.EntityID), 3: []byte(c.UserID), 4: []byte(testOtherID), 6: []byte("reah.approval_intent.v1")}
-	fields[5], _ = proto.Marshal(timestamppb.New(expires))
-	fields[7], _ = proto.Marshal(timestamppb.New(now))
-	var wire []byte
-	for number := protowire.Number(1); number <= 7; number++ {
-		wire = protowire.AppendTag(wire, number, protowire.BytesType)
-		wire = protowire.AppendBytes(wire, fields[number])
-	}
 	input := cloneDocument(args)
 	delete(input, "preparationContext")
-	return document{"protocol": preparedApprovalProtocol, "resource": c.Resource, "connectionId": c.ConnectionID, "userId": c.UserID, "entityId": c.Binding.EntityID, "publicKey": c.Binding.PublicKey, "policyProfile": c.Binding.PolicyProfile, "tool": "new-business-tool", "requestId": testOtherID, "issuedAt": now.UTC().Format(time.RFC3339Nano), "expiresAt": expires.UTC().Format(time.RFC3339Nano), "arguments": args, "input": input, "payloadBytes": base64.StdEncoding.EncodeToString(wire)}
+	return document{"protocol": preparedApprovalProtocol, "resource": c.Resource, "connectionId": c.ConnectionID, "userId": c.UserID, "entityId": c.Binding.EntityID, "publicKey": c.Binding.PublicKey, "policyProfile": c.Binding.PolicyProfile, "tool": "new-business-tool", "requestId": testOtherID, "issuedAt": now.UTC().Format(time.RFC3339Nano), "expiresAt": expires.UTC().Format(time.RFC3339Nano), "arguments": args, "input": input, "payloadBytes": base64.StdEncoding.EncodeToString([]byte("opaque Gateway approval payload"))}
 }
 
 func TestPreparedApprovalRejectsAlteredBindings(t *testing.T) {
@@ -37,38 +26,21 @@ func TestPreparedApprovalRejectsAlteredBindings(t *testing.T) {
 	now := time.Now()
 	args := document{"entityId": testID, "amount": "12.34", "preparationContext": document{"requestId": testOtherID, "futureBusinessField": "server-owned"}}
 	for name, change := range map[string]func(document){
-		"protocol":        func(d document) { d["protocol"] = "future" },
-		"connection":      func(d document) { d["connectionId"] = testID },
-		"resource":        func(d document) { d["resource"] = "https://other.example/mcp" },
-		"key":             func(d document) { d["publicKey"] = "another-key" },
-		"entity":          func(d document) { d["entityId"] = testOtherID },
-		"user":            func(d document) { d["userId"] = testOtherID },
-		"profile":         func(d document) { d["policyProfile"] = "upgraded" },
-		"tool":            func(d document) { d["tool"] = "other-tool" },
-		"nonce":           func(d document) { d["requestId"] = testID },
-		"arguments":       func(d document) { d["arguments"] = document{"entityId": testID, "amount": "999"} },
-		"input":           func(d document) { d["input"] = document{"entityId": testID, "amount": "999"} },
-		"extra field":     func(d document) { d["method"] = "signAnything" },
-		"old response":    func(d document) { d["issuedAt"] = now.Add(-2 * time.Minute).Format(time.RFC3339Nano) },
-		"future response": func(d document) { d["issuedAt"] = now.Add(time.Minute).Format(time.RFC3339Nano) },
-		"expired":         func(d document) { d["expiresAt"] = now.Add(-time.Minute).Format(time.RFC3339Nano) },
-		"extended":        func(d document) { d["expiresAt"] = now.Add(2 * time.Hour).Format(time.RFC3339Nano) },
-		"outer duplicate": func(d document) {
-			b, _ := base64.StdEncoding.DecodeString(stringAt(d, "payloadBytes"))
-			b = protowire.AppendTag(b, 2, protowire.BytesType)
-			b = protowire.AppendString(b, testID)
-			d["payloadBytes"] = base64.StdEncoding.EncodeToString(b)
-		},
-		"outer unknown": func(d document) {
-			b, _ := base64.StdEncoding.DecodeString(stringAt(d, "payloadBytes"))
-			b = protowire.AppendTag(b, 8, protowire.BytesType)
-			b = protowire.AppendString(b, "other")
-			d["payloadBytes"] = base64.StdEncoding.EncodeToString(b)
-		},
-		"outer identity": func(d document) {
-			b, _ := base64.StdEncoding.DecodeString(stringAt(d, "payloadBytes"))
-			d["payloadBytes"] = base64.StdEncoding.EncodeToString([]byte(strings.ReplaceAll(string(b), testID, testOtherID)))
-		},
+		"protocol":            func(d document) { d["protocol"] = "future" },
+		"connection":          func(d document) { d["connectionId"] = testID },
+		"resource":            func(d document) { d["resource"] = "https://other.example/mcp" },
+		"key":                 func(d document) { d["publicKey"] = "another-key" },
+		"entity":              func(d document) { d["entityId"] = testOtherID },
+		"user":                func(d document) { d["userId"] = testOtherID },
+		"profile":             func(d document) { d["policyProfile"] = "upgraded" },
+		"tool":                func(d document) { d["tool"] = "other-tool" },
+		"nonce":               func(d document) { d["requestId"] = testID },
+		"arguments":           func(d document) { d["arguments"] = document{"entityId": testID, "amount": "999"} },
+		"input":               func(d document) { d["input"] = document{"entityId": testID, "amount": "999"} },
+		"old response":        func(d document) { d["issuedAt"] = now.Add(-2 * time.Minute).Format(time.RFC3339Nano) },
+		"future response":     func(d document) { d["issuedAt"] = now.Add(time.Minute).Format(time.RFC3339Nano) },
+		"expired":             func(d document) { d["expiresAt"] = now.Add(-time.Minute).Format(time.RFC3339Nano) },
+		"extended":            func(d document) { d["expiresAt"] = now.Add(2 * time.Hour).Format(time.RFC3339Nano) },
 		"noncanonical base64": func(d document) { d["payloadBytes"] = stringAt(d, "payloadBytes") + "\n" },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -88,6 +60,83 @@ func TestPreparedApprovalRejectsAlteredBindings(t *testing.T) {
 	// Client source contains no knowledge of this new business's fields or details.
 	if args["preparationContext"] == nil {
 		t.Fatal("mutated original arguments")
+	}
+}
+
+func TestPreparedApprovalAllowsDescriptiveAnnotationsWithoutSigningThem(t *testing.T) {
+	key := testKey(t)
+	c := testContext(key, DefaultServer)
+	now := time.Now()
+	args := document{"entityId": testID, "requestId": testOtherID, "futureBusiness": "original terms"}
+	for _, annotation := range []any{
+		nil, false, "server guidance", []any{"future", true},
+		document{"stage": "prepared_intent_only", "approvalCreated": false, "providerStateMayHaveChanged": true},
+	} {
+		d := preparedFixture(t, c, args, now)
+		d["financialState"] = annotation
+		d["futureAnnotation"] = document{"next": "server-owned guidance"}
+		d["method"] = "signAnything"
+		d["requestSignature"] = document{"payloadBytes": "untrusted annotation"}
+		signature, input, err := preparedApproval(key, c, "new-business-tool", args, d, now)
+		if err != nil || !sameJSON(input, args) {
+			t.Fatalf("annotations changed preparation: %v", err)
+		}
+		if stringAt(signature, "payloadBytes") != stringAt(d, "payloadBytes") {
+			t.Fatal("annotation changed the signed payload")
+		}
+		verifyText(t, key, stringAt(signature, "payloadBytes"), stringAt(signature, "signature"), false)
+		for _, field := range []string{"financialState", "futureAnnotation", "method", "requestSignature"} {
+			if _, exists := input[field]; exists {
+				t.Fatalf("outer annotation entered submission input: %s", field)
+			}
+		}
+	}
+}
+
+func TestPreparedApprovalSignsOpaqueGatewayPayload(t *testing.T) {
+	key := testKey(t)
+	c := testContext(key, DefaultServer)
+	now := time.Now()
+	args := document{"entityId": testID, "requestId": testOtherID}
+	for _, payload := range [][]byte{
+		[]byte("new server-owned approval format"),
+		{0xff, 0x00, 0x01, 0x80},
+	} {
+		d := preparedFixture(t, c, args, now)
+		d["payloadBytes"] = base64.StdEncoding.EncodeToString(payload)
+		signature, input, err := preparedApproval(key, c, "new-business-tool", args, d, now)
+		if err != nil || !sameJSON(input, args) {
+			t.Fatalf("client interpreted an opaque approval payload: %v", err)
+		}
+		if stringAt(signature, "payloadBytes") != d["payloadBytes"] {
+			t.Fatal("changed the server's opaque payload")
+		}
+		verifyText(t, key, stringAt(signature, "payloadBytes"), stringAt(signature, "signature"), false)
+	}
+}
+
+func TestPreparedApprovalStillRequiresProtectedFieldsAndBoundedResponse(t *testing.T) {
+	key := testKey(t)
+	c := testContext(key, DefaultServer)
+	now := time.Now()
+	args := document{"entityId": testID, "requestId": testOtherID}
+	for _, field := range []string{
+		"protocol", "resource", "connectionId", "userId", "entityId", "publicKey", "policyProfile",
+		"tool", "requestId", "issuedAt", "expiresAt", "arguments", "input", "payloadBytes",
+	} {
+		t.Run(field, func(t *testing.T) {
+			d := preparedFixture(t, c, args, now)
+			delete(d, field)
+			d["annotation"] = "descriptive fields cannot replace a protected field"
+			if _, _, err := preparedApproval(key, c, "new-business-tool", args, d, now); err == nil {
+				t.Fatal("signed preparation with a missing protected field")
+			}
+		})
+	}
+	d := preparedFixture(t, c, args, now)
+	d["annotation"] = strings.Repeat("x", 192*1024)
+	if _, _, err := preparedApproval(key, c, "new-business-tool", args, d, now); err == nil {
+		t.Fatal("signed an oversized preparation response")
 	}
 }
 
@@ -116,11 +165,19 @@ func TestPreparedCallBindsBothStagesAndNeverRetries(t *testing.T) {
 					if input["tool"] != "new-business-tool" || !sameJSON(bound["arguments"], args) || !sameJSON(input["arguments"], args) {
 						t.Fatal("unbound preparation")
 					}
-					return &mcp.CallToolResult{StructuredContent: preparedFixture(t, c, args, time.Now())}, nil
+					value := preparedFixture(t, c, args, time.Now())
+					value["financialState"] = document{"stage": "prepared_intent_only", "approvalCreated": false}
+					value["futureAnnotation"] = "descriptive only"
+					return &mcp.CallToolResult{StructuredContent: value}, nil
 				}
 				submitted++
 				if name != "new-business-tool" {
 					t.Fatal("unexpected tool")
+				}
+				for _, field := range []string{"financialState", "futureAnnotation"} {
+					if _, exists := input[field]; exists {
+						t.Fatalf("outer annotation entered final operation proof: %s", field)
+					}
 				}
 				sig := input["requestSignature"].(document)
 				verifyText(t, key, stringAt(sig, "payloadBytes"), stringAt(sig, "signature"), false)

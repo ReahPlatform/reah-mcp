@@ -218,7 +218,11 @@ The optional local Go client signs Gateway-prepared approvals and verified
 execution continuations using an explicitly registered device credential.
 Gateway owns business schemas, transaction encoding and preparation. The client
 checks fixed identity, original-argument, nonce and lifetime bindings without a
-business-tool allowlist or financial protobuf descriptor. Agents follow live
+business-tool allowlist or financial protobuf descriptor. The
+`approval-prepared-v1` response can include descriptive annotations such as
+`financialState`; they do not change signing input or authorize an operation.
+Approval payloads stay opaque; backend services validate their financial terms.
+Agents follow live
 schemas and descriptions to choose accounts, obtain quotes and check balances.
 Existing server permissions, approvals, quotas and Hodor execution validation
 still apply. Preserve original request and approval IDs; reconcile uncertain
