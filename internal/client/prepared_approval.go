@@ -6,22 +6,19 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const preparedApprovalProtocol = "approval-prepared-v1"
 
 var errPreparedApproval = errors.New("untrusted prepared approval; inspect the original business terms before retrying")
 
-// The authenticated Gateway owns business encoding. The client accepts only this
-// fixed approval envelope, never an Agent-selected payload, method or schema.
+// The authenticated Gateway owns business encoding. The client verifies these
+// protected approval fields, never an Agent-selected payload, method or schema.
+// Additional outer annotations are descriptive and never enter signing input.
 func preparedApproval(key DeviceKey, c SigningContext, tool string, args document, value any, now time.Time) (document, document, error) {
 	raw, err := json.Marshal(value)
 	var d document
-	if err != nil || len(raw) > 192*1024 || json.Unmarshal(raw, &d) != nil || !exactFields(d, "protocol", "resource", "connectionId", "userId", "entityId", "publicKey", "policyProfile", "tool", "requestId", "issuedAt", "expiresAt", "arguments", "input", "payloadBytes") {
+	if err != nil || len(raw) > 192*1024 || json.Unmarshal(raw, &d) != nil {
 		return nil, nil, errPreparedApproval
 	}
 	for field, expected := range map[string]string{"protocol": preparedApprovalProtocol, "resource": c.Resource, "connectionId": c.ConnectionID, "userId": c.UserID, "entityId": c.Binding.EntityID, "publicKey": key.PublicKey, "policyProfile": c.Binding.PolicyProfile, "tool": tool} {
@@ -63,10 +60,8 @@ func preparedApproval(key DeviceKey, c SigningContext, tool string, args documen
 	if err != nil || len(wire) == 0 || len(wire) > 128*1024 || base64.StdEncoding.EncodeToString(wire) != payload {
 		return nil, nil, errPreparedApproval
 	}
-	fields, err := approvalEnvelope(wire)
-	if err != nil || len(fields[1]) == 0 || string(fields[2]) != c.Binding.EntityID || string(fields[3]) != c.UserID || string(fields[4]) != nonce || string(fields[6]) != "reah.approval_intent.v1" || !sameTimestamp(fields[5], expires) || !sameTimestamp(fields[7], issued) {
-		return nil, nil, errPreparedApproval
-	}
+	// The authenticated Gateway owns the payload's format and business checks.
+	// Sign its exact opaque representation without decoding an approval schema.
 	signature, err := signText(key, payload, false)
 	if err != nil {
 		return nil, nil, err
@@ -78,30 +73,4 @@ func sameJSON(a, b any) bool {
 	left, e1 := json.Marshal(a)
 	right, e2 := json.Marshal(b)
 	return e1 == nil && e2 == nil && bytes.Equal(left, right)
-}
-
-// Only the stable SignedApprovalIntent outer fields are interpreted here.
-// Business details stay opaque and are validated by Gateway, Ledger and Hodor.
-func approvalEnvelope(wire []byte) (map[protowire.Number][]byte, error) {
-	fields := map[protowire.Number][]byte{}
-	for len(wire) > 0 {
-		number, kind, n := protowire.ConsumeTag(wire)
-		if n < 0 || kind != protowire.BytesType || number < 1 || number > 7 || fields[number] != nil {
-			return nil, errPreparedApproval
-		}
-		value, size := protowire.ConsumeBytes(wire[n:])
-		if size < 0 {
-			return nil, errPreparedApproval
-		}
-		fields[number] = value
-		wire = wire[n+size:]
-	}
-	if len(fields) != 7 {
-		return nil, errPreparedApproval
-	}
-	return fields, nil
-}
-func sameTimestamp(wire []byte, expected time.Time) bool {
-	var timestamp timestamppb.Timestamp
-	return proto.Unmarshal(wire, &timestamp) == nil && len(timestamp.ProtoReflect().GetUnknown()) == 0 && timestamp.CheckValid() == nil && timestamp.AsTime().Equal(expected)
 }

@@ -49,19 +49,22 @@ new destination, signing method, algorithm or provider verification key.
 4. Gateway verifies the proof, current signing binding, allowed operation and
    configured spend limits. Its typed adapters prepare the existing Conductor
    `SignedApprovalIntent` without signing or submitting an approval or payment.
-5. The response contains exactly `protocol`, `resource`, `connectionId`, `userId`,
+5. The response requires `protocol`, `resource`, `connectionId`, `userId`,
    `entityId`, `publicKey`, `policyProfile`, `tool`, `requestId`, `issuedAt`,
    `expiresAt`, `arguments`, `input` and `payloadBytes`. The client checks the
    identity, original arguments, stable nonce, fresh issue time and credential
    deadline. `input` must equal the original arguments with only
-   `preparationContext` removed.
-6. The client validates only the stable outer protobuf fields: nonempty details,
-   entity, user, nonce, expiry, domain `reah.approval_intent.v1` and issue time.
-   Unknown/duplicate outer fields, invalid encodings and mismatches fail closed.
-   Business details stay opaque to the client. Gateway, Ledger and Hodor retain
-   their typed business/intent checks; the authenticated Gateway is trusted to
-   encode the Agent's exact business terms, rather than the client independently
-   reconstructing their financial semantics.
+   `preparationContext` removed. Additional outer annotations, including
+   `financialState`, are descriptive JSON within the response's 192 KiB limit.
+   The client does not interpret them or copy them into signing input, operation
+   proofs or submission arguments. Adding descriptive annotations does not
+   require a client update.
+6. `payloadBytes` is bounded canonical base64 and stays opaque to the client.
+   The client does not decode an approval protobuf or duplicate financial,
+   quote, funds or spend-limit validation. Gateway, Ledger and Hodor retain
+   their typed business/intent checks, including validation of the actual signed
+   payload. The authenticated Gateway owns encoding the Agent's exact business
+   terms; the client checks only the surrounding request and credential binding.
 7. The client signs the exact canonical base64 approval payload, adds
    `requestSignature`, and submits the original tool with a new operation proof
    covering every final argument. It never exposes a payload-signing tool to the
@@ -69,7 +72,7 @@ new destination, signing method, algorithm or provider verification key.
    request/approval; it does not automatically reprepare or resubmit.
 
 Adding a business operation or changing its encoding within this contract is a
-Gateway change. Changing the fixed outer envelope, cryptography or credential
+Gateway change. Changing the protected envelope fields, cryptography or credential
 security requires a versioned client protocol update. Deploy compatible Gateway
 and client versions together; older business-specific signing protocols are not
 accepted by this client. Read-only operation remains available independently.
