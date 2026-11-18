@@ -16,13 +16,15 @@ import (
 )
 
 type catalogFixture struct {
-	remote                 *Remote
-	store                  *memoryStore
-	lists, calls           atomic.Int32
-	deny, fail, extra      atomic.Bool
-	rotateOnDiscoveryStart atomic.Bool
-	rotations              atomic.Int32
-	churnOnList            atomic.Bool
+	remote                  *Remote
+	store                   *memoryStore
+	lists, calls            atomic.Int32
+	deny, fail, extra       atomic.Bool
+	rotateOnDiscoveryStart  atomic.Bool
+	rotations               atomic.Int32
+	churnOnList             atomic.Bool
+	replaceOnDiscoveryStart atomic.Bool
+	replacement             *Session
 }
 
 func newCatalogFixture(t *testing.T) *catalogFixture {
@@ -69,6 +71,10 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 	})
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return sdk }, &mcp.StreamableHTTPOptions{Stateless: true})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/mcp/oauth/revoke" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path == "/mcp/oauth/token" {
 			f.rotations.Add(1)
 			_ = json.NewEncoder(w).Encode(document{"access_token": "rotated-access", "refresh_token": "rotated-refresh", "expires_in": 900, "scope": Scope, "token_type": "Bearer"})
@@ -82,11 +88,16 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 		}
 		_ = json.Unmarshal(raw, &req)
 		if req.Method == "tools/list" && f.churnOnList.Load() {
-			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.Tokens.AccessToken += "x"; return nil }); err != nil {
+			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.AuthorizationGeneration += "x"; return nil }); err != nil {
 				t.Error(err)
 			}
 		}
 
+		if (req.Method == "initialize" || req.Method == "server/discover") && f.replaceOnDiscoveryStart.CompareAndSwap(true, false) {
+			if err := f.store.Exclusive(r.Context(), func() error { return f.store.Write(f.replacement) }); err != nil {
+				t.Error(err)
+			}
+		}
 		if (req.Method == "initialize" || req.Method == "server/discover") && f.rotateOnDiscoveryStart.CompareAndSwap(true, false) {
 			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.Tokens.ExpiresAt = time.Now().Add(-time.Second).UnixMilli(); return nil }); err != nil {
 				t.Error(err)
@@ -104,7 +115,7 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 		handler.ServeHTTP(w, r)
 	}))
 	config, _ := Configure(server.URL+"/mcp", "cache-test")
-	f.store = &memoryStore{s: &Session{Version: 1, Server: config.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}
+	f.store = &memoryStore{s: &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: config.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}
 	f.remote = &Remote{OAuth: &OAuth{config, f.store, server.Client()}, Version: "test"}
 	t.Cleanup(func() { f.remote.Close(); server.Close() })
 	return f
@@ -176,7 +187,7 @@ func TestRemoteCatalogLifecycleAndExpiry(t *testing.T) {
 	}
 	call()
 	changes := []func(*Session){
-		func(s *Session) { s.Tokens.AccessToken = "replacement" },
+		func(s *Session) { s.AuthorizationGeneration = "replacement-login" },
 		func(s *Session) { s.DeviceKey = testKey(t) },
 		func(s *Session) { s.CredentialPolicyProfile = "financial-operations-v1" },
 		func(s *Session) {
@@ -281,14 +292,14 @@ func TestRemoteCatalogAcceptsTransportRotationAfterPreflight(t *testing.T) {
 	if _, err := f.remote.Call(context.Background(), "reah_read", document{}); err != nil {
 		t.Fatal("successful transport rotation rejected discovery", err)
 	}
-	if f.rotations.Load() != 1 || f.lists.Load() != 2 || f.calls.Load() != 1 {
+	if f.rotations.Load() != 1 || f.lists.Load() != 1 || f.calls.Load() != 1 {
 		t.Fatalf("rotation/list/dispatch counts %d/%d/%d", f.rotations.Load(), f.lists.Load(), f.calls.Load())
 	}
 	if _, err := f.remote.Call(context.Background(), "reah_read", document{}); err != nil {
 		t.Fatal(err)
 	}
-	if f.lists.Load() != 2 {
-		t.Fatal("fresh rotated catalog was not cached")
+	if f.lists.Load() != 1 {
+		t.Fatal("normal rotation unnecessarily invalidated catalog")
 	}
 }
 
@@ -335,7 +346,173 @@ func TestRemoteCatalogLifecycleChurnStopsBeforeDispatch(t *testing.T) {
 	if _, err := f.remote.Call(context.Background(), "reah_mutate", document{}); err == nil {
 		t.Fatal("unstable discovery accepted")
 	}
-	if f.lists.Load() != 2 || f.calls.Load() != 0 {
-		t.Fatal("discovery retry was unbounded or reached dispatch")
+	if f.lists.Load() != 1 || f.calls.Load() != 0 {
+		t.Fatal("unproven token replacement reached dispatch or retried")
+	}
+}
+
+func TestRemoteCatalogRejectsSavedLoginReplacementDuringDiscovery(t *testing.T) {
+	for _, financial := range []bool{false, true} {
+		t.Run(map[bool]string{false: "keyless same key", true: "financial profile replacement"}[financial], func(t *testing.T) {
+			f := newCatalogFixture(t)
+			ctx := context.Background()
+			if err := f.store.Exclusive(ctx, func() error {
+				if financial {
+					f.store.s.CredentialEnrollmentRequested = true
+					f.store.s.CredentialPolicyProfile = "financial-operations-v1"
+					f.store.s.Enrollment = &Receipt{ConnectionID: testID, State: "awaiting_provider"}
+				}
+				replacement, err := f.store.Read()
+				if err != nil {
+					return err
+				}
+				replacement.AuthorizationGeneration = "replacement-login"
+				replacement.Tokens = &Tokens{"replacement-login-access", "replacement-login-refresh", time.Now().Add(time.Hour).UnixMilli()}
+				if financial {
+					replacement.CredentialPolicyProfile = "wallet-transfer-v1"
+					replacement.Enrollment = &Receipt{ConnectionID: testOtherID, State: "awaiting_provider"}
+				}
+				f.replacement = replacement
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			f.replaceOnDiscoveryStart.Store(true)
+			if _, err := f.remote.Call(ctx, "reah_mutate", document{}); err == nil {
+				t.Fatal("pending invocation followed replacement login")
+			}
+			if f.calls.Load() != 0 {
+				t.Fatal("replacement login received pending dispatch")
+			}
+		})
+	}
+}
+
+func TestRemoteBearerRejectsReplacementAfterDiscovery(t *testing.T) {
+	f := newCatalogFixture(t)
+	ctx, err := f.remote.bindInvocation(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.remote.catalog(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Exclusive(ctx, func() error {
+		f.store.s.AuthorizationGeneration = "replacement-login"
+		f.store.s.Tokens = &Tokens{"new-login", "new-refresh", time.Now().Add(time.Hour).UnixMilli()}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.remote.invoke(ctx, "reah_mutate", document{}); err == nil {
+		t.Fatal("transport used replacement login")
+	}
+	if f.calls.Load() != 0 {
+		t.Fatal("pending dispatch reached server under replacement bearer")
+	}
+}
+
+func TestConcurrentInvocationsFollowObservedSameGrantRefresh(t *testing.T) {
+	f := newCatalogFixture(t)
+	base := context.Background()
+	first, err := f.remote.bindInvocation(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.remote.bindInvocation(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Exclusive(base, func() error { f.store.s.Tokens.ExpiresAt = 0; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for _, ctx := range []context.Context{first, second} {
+		wg.Add(1)
+		go func(ctx context.Context) {
+			defer wg.Done()
+			if _, err := f.remote.OAuth.AccessToken(ctx); err != nil {
+				t.Error("same-grant refresh rejected", err)
+			}
+		}(ctx)
+	}
+	wg.Wait()
+	if f.rotations.Load() != 1 {
+		t.Fatal("refresh was not serialized once")
+	}
+	for _, ctx := range []context.Context{first, second} {
+		if _, err := f.remote.invoke(ctx, "reah_read", document{}); err != nil {
+			t.Fatal("fresh bearer rejected for original grant", err)
+		}
+	}
+	if f.calls.Load() != 2 {
+		t.Fatal("same-grant invocation failed or replayed")
+	}
+}
+
+func TestUnboundRefreshPreservesPendingInvocationsAndCatalog(t *testing.T) {
+	f := newCatalogFixture(t)
+	base := context.Background()
+	if _, err := f.remote.List(base); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := f.remote.bindInvocation(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Exclusive(base, func() error { f.store.s.Tokens.ExpiresAt = 0; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	// A separate status check or process performs refresh outside the pending
+	// request context while preserving the saved authorization generation.
+	other := &OAuth{f.remote.OAuth.Config, f.store, f.remote.OAuth.HTTP}
+	if _, err := other.AccessToken(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.remote.invoke(pending, "reah_read", document{}); err != nil {
+		t.Fatal("same authorization refresh rejected", err)
+	}
+	if _, err := f.remote.Call(base, "reah_read", document{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.rotations.Load() != 1 || f.lists.Load() != 1 || f.calls.Load() != 2 {
+		t.Fatal("normal refresh invalidated metadata or replayed")
+	}
+}
+
+func TestMissingAuthorizationGenerationRequiresReconnectButAllowsCleanup(t *testing.T) {
+	f := newCatalogFixture(t)
+	ctx := context.Background()
+	if err := f.store.Exclusive(ctx, func() error { f.store.s.AuthorizationGeneration = ""; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.remote.Call(ctx, "reah_read", document{}); err == nil {
+		t.Fatal("old authorization silently acquired a marker")
+	}
+	if f.calls.Load() != 0 || f.lists.Load() != 0 {
+		t.Fatal("missing generation dispatched")
+	}
+	if err := f.store.Exclusive(ctx, func() error {
+		s, err := f.store.Read()
+		if err != nil {
+			return err
+		}
+		if s.Tokens == nil || s.AuthorizationGeneration != "" {
+			t.Fatal("old authorization unavailable for normal login/logout cleanup")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.remote.OAuth.Logout(ctx); err != nil {
+		t.Fatal("old authorization could not be revoked for reconnect", err)
+	}
+	if err := f.store.Exclusive(ctx, func() error {
+		if f.store.s != nil {
+			t.Fatal("old authorization remained after cleanup")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

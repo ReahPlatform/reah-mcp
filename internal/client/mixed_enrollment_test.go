@@ -97,7 +97,7 @@ func TestReadOnlyEnrollmentAndResumeNeverSignOrOpenProvider(t *testing.T) {
 	defer server.Close()
 	origin = server.URL
 	c, _ := Configure(origin+"/mcp", "readonly")
-	s := &Session{Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
+	s := &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
 	credential = readOnlyFixture(t, c, s)
 	store := &memoryStore{s: s}
 	o := &OAuth{c, store, server.Client()}
@@ -174,7 +174,7 @@ func TestMixedStatusVerifiesEnrolledSubsetAndKeepsOtherReadAccess(t *testing.T) 
 			defer server.Close()
 			origin = server.URL
 			c, _ := Configure(origin+"/mcp", "mixed")
-			s := &Session{Version: 1, Server: c.Server, ClientID: "client", DeviceKey: key, Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
+			s := &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: c.Server, ClientID: "client", DeviceKey: key, Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
 			credential = proofFixture(t, c, s)
 			credential["state"] = "awaiting_provider"
 			var proof document

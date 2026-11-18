@@ -13,12 +13,19 @@ tool definitions, including provider registration changes that do not alter the
 local enrollment receipt. Ordinary
 calls can reuse its public schema and signing-protocol metadata for up to one
 minute. The snapshot is memory-only and bounded. Closing the connection clears
-it immediately; changes to its saved token, device key, profile or enrollment
-invalidate it before the next use.
-Successful OAuth rotation during discovery allows one fresh discovery-only
-repeat under the new token lifecycle. An unknown tool triggers fresh discovery
-before any dispatch. Returned schemas
-are independent copies; a host cannot modify the snapshot.
+it immediately; changes to the authorization generation, device key, profile or
+enrollment invalidate it before the next use. Normal token refresh preserves
+both the generation and eligible metadata, including refresh by another process
+or a status check. Each pending invocation remains bound to its original saved
+authorization at every bearer selection. A new successful browser consent gets
+a new local generation, preventing older pending calls from switching to that
+replacement authorization. Already selected bearers remain subject to server
+authorization. Existing
+development authorizations without a generation must reconnect; login and logout
+can still read and revoke them. This marker is local continuity metadata, not a
+new permission or server protocol. An unknown tool triggers fresh discovery
+before dispatch. Returned schemas are independent copies; a host cannot modify
+the snapshot.
 
 This snapshot grants no authority. Every invocation still authenticates at the
 server, and signed calls obtain fresh signing context and exact request proofs.

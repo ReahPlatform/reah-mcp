@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"time"
 
@@ -42,20 +41,11 @@ func (r *Remote) catalogIdentity(ctx context.Context, refreshToken bool) ([32]by
 		if s == nil || s.Tokens == nil || s.Tokens.AccessToken == "" || s.PendingRevocation != "" {
 			return errConnection
 		}
-		// Token rotation also invalidates keyless connections, whose enrollment has
-		// no connection ID. These bytes are hashed immediately and never cached.
-		raw, err := json.Marshal(struct {
-			Config                       Config
-			ClientID, PublicKey, Profile string
-			EnrollmentRequested          bool
-			Enrollment                   *Receipt
-			Tokens                       *Tokens
-		}{r.OAuth.Config, s.ClientID, s.DeviceKey.PublicKey, s.CredentialPolicyProfile, s.CredentialEnrollmentRequested, s.Enrollment, s.Tokens})
-		if err != nil {
+		if err := checkInvocationCredentials(ctx, r.OAuth.Config, s); err != nil {
 			return err
 		}
-		identity = sha256.Sum256(raw)
-		return nil
+		identity, err = sessionIdentity(r.OAuth.Config, s)
+		return err
 	})
 	return identity, err
 }
@@ -95,17 +85,7 @@ func (r *Remote) catalog(ctx context.Context, refresh bool) ([]*mcp.Tool, bool, 
 		return nil, false, errConnection
 	}
 	if current != identity {
-		// The transport can successfully rotate OAuth tokens after preflight.
-		// Repeat discovery once under the new lifecycle, never a tool call.
-		identity = current
-		tools, err = r.fetchTools(ctx)
-		if err != nil {
-			return nil, false, err
-		}
-		current, err = r.catalogIdentity(ctx, false)
-		if err != nil || current != identity {
-			return nil, false, errConnection
-		}
+		return nil, false, errConnection
 	}
 	raw, err := json.Marshal(tools)
 	if err != nil {

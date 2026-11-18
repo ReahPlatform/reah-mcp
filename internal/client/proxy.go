@@ -188,6 +188,10 @@ func (r *Remote) Close() {
 	}
 }
 func (r *Remote) List(ctx context.Context) ([]*mcp.Tool, error) {
+	ctx, err := r.bindInvocation(ctx)
+	if err != nil {
+		return nil, err
+	}
 	tools, _, err := r.catalog(ctx, true)
 	return tools, err
 }
@@ -236,6 +240,10 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 		if _, ok := args[k]; ok {
 			return nil, errors.New("signing material is supplied by the local client, never tool arguments")
 		}
+	}
+	ctx, err := r.bindInvocation(ctx)
+	if err != nil {
+		return nil, err
 	}
 	// Explicit capability discovery must reflect provider-side registration
 	// changes even when the local enrollment receipt has not changed.

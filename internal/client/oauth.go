@@ -153,6 +153,9 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 		if s == nil || s.Tokens == nil {
 			return &connectionError{Code: "login_required", Message: "Reah has no usable local OAuth credentials; run status with this server and profile for the exact login command"}
 		}
+		if err := checkInvocationCredentials(ctx, o.Config, s); err != nil {
+			return err
+		}
 		if s.Tokens.ExpiresAt > time.Now().Add(30*time.Second).UnixMilli() {
 			token = s.Tokens.AccessToken
 			return nil
@@ -292,6 +295,8 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 			callback.finish(false)
 			return e
 		}
+		// A successful new consent replaces the local continuity marker.
+		s.AuthorizationGeneration = randomText()
 		if e = o.Store.Write(s); e != nil {
 			callback.finish(false)
 			return e
