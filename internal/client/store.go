@@ -24,7 +24,6 @@ type Receipt struct {
 	ProofHash           string `json:"proofHash"`
 }
 type Session struct {
-	AuthorizationGeneration       string    `json:"authorizationGeneration,omitempty"`
 	Version                       int       `json:"version"`
 	Server                        string    `json:"server"`
 	ClientID                      string    `json:"clientId"`

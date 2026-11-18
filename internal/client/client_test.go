@@ -220,8 +220,9 @@ func TestRefreshRotatesOnceAndNeverReplays(t *testing.T) {
 	}))
 	defer server.Close()
 	c, _ := Configure(server.URL+"/mcp", "test")
-	store := &memoryStore{s: &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"expired", "old-refresh", 1}}}
+	store := &memoryStore{s: &Session{Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"expired", "old-refresh", 1}}}
 	o := &OAuth{c, store, server.Client()}
+	originalKey := store.s.DeviceKey
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -234,8 +235,8 @@ func TestRefreshRotatesOnceAndNeverReplays(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if store.s.AuthorizationGeneration != "fixture-login" {
-		t.Fatal("refresh replaced authorization generation")
+	if store.s.DeviceKey != originalKey {
+		t.Fatal("refresh replaced login key")
 	}
 	if requests.Load() != 1 {
 		t.Fatal("concurrent refresh replayed token")
@@ -359,9 +360,9 @@ func TestOAuthLoginPKCECallbackAndLogout(t *testing.T) {
 	if store.s == nil || store.s.Tokens == nil || store.s.Tokens.AccessToken != "access" {
 		t.Fatal("tokens not saved")
 	}
-	firstGeneration := store.s.AuthorizationGeneration
-	if firstGeneration == "" {
-		t.Fatal("successful login did not create generation")
+	firstPublicKey := store.s.DeviceKey.PublicKey
+	if firstPublicKey == "" {
+		t.Fatal("successful login did not create a device key")
 	}
 	if err := login(); err != nil {
 		t.Fatal(err)
@@ -369,8 +370,8 @@ func TestOAuthLoginPKCECallbackAndLogout(t *testing.T) {
 	if err := <-completed; err != nil {
 		t.Fatal(err)
 	}
-	if store.s.AuthorizationGeneration == "" || store.s.AuthorizationGeneration == firstGeneration {
-		t.Fatal("new successful consent retained old generation")
+	if store.s.DeviceKey.PublicKey == "" || store.s.DeviceKey.PublicKey == firstPublicKey {
+		t.Fatal("new successful consent retained old login key")
 	}
 	previousRevocations := revoked.Load()
 
@@ -413,7 +414,7 @@ func TestCatalogAndRemoteReadIntegration(t *testing.T) {
 	}))
 	defer server.Close()
 	c, _ := Configure(server.URL+"/mcp", "test")
-	o := &OAuth{c, &memoryStore{s: &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"current-token", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}, server.Client()}
+	o := &OAuth{c, &memoryStore{s: &Session{Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"current-token", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}, server.Client()}
 	remote := &Remote{OAuth: o, Version: "test"}
 	defer remote.Close()
 	s := NewServer(remote, "test")

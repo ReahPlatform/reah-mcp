@@ -62,7 +62,7 @@ func (s *cliStore) Exclusive(ctx context.Context, fn func() error) error {
 func TestStatusCommandPreservesDiagnosticJSONOnCheckFailure(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "private upstream error", 503) }))
 	defer server.Close()
-	store := &cliStore{session: &client.Session{AuthorizationGeneration: "fixture-login", DeviceKey: client.DeviceKey{PublicKey: "public"}, Tokens: &client.Tokens{AccessToken: "secret-access", RefreshToken: "secret-refresh", ExpiresAt: time.Now().Add(time.Hour).UnixMilli()}}}
+	store := &cliStore{session: &client.Session{DeviceKey: client.DeviceKey{PublicKey: "public"}, Tokens: &client.Tokens{AccessToken: "secret-access", RefreshToken: "secret-refresh", ExpiresAt: time.Now().Add(time.Hour).UnixMilli()}}}
 	cmd := commandWithOAuth(func(c client.Config) *client.OAuth {
 		return &client.OAuth{Config: c, Store: store, HTTP: server.Client()}
 	})

@@ -295,8 +295,6 @@ func (o *OAuth) LoginWithProgress(ctx context.Context, enroll bool, profile stri
 			callback.finish(false)
 			return e
 		}
-		// A successful new consent replaces the local continuity marker.
-		s.AuthorizationGeneration = randomText()
 		if e = o.Store.Write(s); e != nil {
 			callback.finish(false)
 			return e

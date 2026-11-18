@@ -64,7 +64,7 @@ func TestResumeRegistrationPreservesGrantAndKey(t *testing.T) {
 	defer server.Close()
 	origin = server.URL
 	c, _ := Configure(origin+"/mcp", "resume")
-	s := &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"saved-access", "saved-refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
+	s := &Session{Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"saved-access", "saved-refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
 	credential = proofFixture(t, c, s)
 	credential["state"] = "awaiting_provider"
 	s.Enrollment = &Receipt{testID, "awaiting_provider", stringAt(credential, "credential_expires_at"), digest(stringAt(credential, "proof_payload"))}
@@ -223,7 +223,7 @@ func TestLiveStatusVerifiesEveryBusinessAndFailsClosed(t *testing.T) {
 			defer server.Close()
 			origin = server.URL
 			config, _ := Configure(origin+"/mcp", "live")
-			s := &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: config.Server, ClientID: "client", DeviceKey: key, Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
+			s := &Session{Version: 1, Server: config.Server, ClientID: "client", DeviceKey: key, Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}, CredentialEnrollmentRequested: true}
 			credential = proofFixture(t, config, s)
 			credential["state"] = "awaiting_provider"
 			s.Enrollment = &Receipt{testID, "awaiting_provider", stringAt(credential, "credential_expires_at"), digest(stringAt(credential, "proof_payload"))}

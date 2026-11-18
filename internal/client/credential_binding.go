@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 )
 
-// A local authorization generation identifies one completed browser consent.
-// Refresh preserves it; a new login replaces it. It is continuity metadata,
-// never server authority. Each pending invocation keeps its original binding.
+// Login always replaces the saved device key, including read-only consent.
+// Refresh preserves it. Each pending invocation keeps that existing lifecycle
+// binding; it never grants authority in place of server authorization.
 type invocationCredentials struct{ session [32]byte }
 type invocationCredentialsKey struct{}
 
@@ -16,16 +16,13 @@ func sessionIdentity(config Config, s *Session) ([32]byte, error) {
 	if s == nil || s.Tokens == nil || s.PendingRevocation != "" {
 		return [32]byte{}, errConnection
 	}
-	if s.AuthorizationGeneration == "" {
-		return [32]byte{}, &connectionError{Code: "login_required", Message: "Reconnect this Reah authorization before using remote tools"}
-	}
 	raw, err := json.Marshal(struct {
-		Config                                           Config
-		Version                                          int
-		Server, ClientID, PublicKey, Profile, Generation string
-		EnrollmentRequested                              bool
-		Enrollment                                       *Receipt
-	}{config, s.Version, s.Server, s.ClientID, s.DeviceKey.PublicKey, s.CredentialPolicyProfile, s.AuthorizationGeneration, s.CredentialEnrollmentRequested, s.Enrollment})
+		Config                               Config
+		Version                              int
+		Server, ClientID, PublicKey, Profile string
+		EnrollmentRequested                  bool
+		Enrollment                           *Receipt
+	}{config, s.Version, s.Server, s.ClientID, s.DeviceKey.PublicKey, s.CredentialPolicyProfile, s.CredentialEnrollmentRequested, s.Enrollment})
 	return sha256.Sum256(raw), err
 }
 func (r *Remote) bindInvocation(ctx context.Context) (context.Context, error) {

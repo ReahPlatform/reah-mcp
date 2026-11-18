@@ -88,7 +88,7 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 		}
 		_ = json.Unmarshal(raw, &req)
 		if req.Method == "tools/list" && f.churnOnList.Load() {
-			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.AuthorizationGeneration += "x"; return nil }); err != nil {
+			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.DeviceKey = testKey(t); return nil }); err != nil {
 				t.Error(err)
 			}
 		}
@@ -103,6 +103,9 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 				t.Error(err)
 			}
 		}
+		if req.Method == "tools/call" && f.rotations.Load() > 0 && r.Header.Get("Authorization") != "Bearer rotated-access" {
+			t.Error("tool dispatch did not use refreshed bearer")
+		}
 		if f.deny.Load() {
 			http.Error(w, "denied", http.StatusUnauthorized)
 			return
@@ -115,7 +118,7 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 		handler.ServeHTTP(w, r)
 	}))
 	config, _ := Configure(server.URL+"/mcp", "cache-test")
-	f.store = &memoryStore{s: &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: config.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}
+	f.store = &memoryStore{s: &Session{Version: 1, Server: config.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"access", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}
 	f.remote = &Remote{OAuth: &OAuth{config, f.store, server.Client()}, Version: "test"}
 	t.Cleanup(func() { f.remote.Close(); server.Close() })
 	return f
@@ -187,7 +190,6 @@ func TestRemoteCatalogLifecycleAndExpiry(t *testing.T) {
 	}
 	call()
 	changes := []func(*Session){
-		func(s *Session) { s.AuthorizationGeneration = "replacement-login" },
 		func(s *Session) { s.DeviceKey = testKey(t) },
 		func(s *Session) { s.CredentialPolicyProfile = "financial-operations-v1" },
 		func(s *Session) {
@@ -347,13 +349,13 @@ func TestRemoteCatalogLifecycleChurnStopsBeforeDispatch(t *testing.T) {
 		t.Fatal("unstable discovery accepted")
 	}
 	if f.lists.Load() != 1 || f.calls.Load() != 0 {
-		t.Fatal("unproven token replacement reached dispatch or retried")
+		t.Fatal("login replacement reached dispatch or retried")
 	}
 }
 
 func TestRemoteCatalogRejectsSavedLoginReplacementDuringDiscovery(t *testing.T) {
 	for _, financial := range []bool{false, true} {
-		t.Run(map[bool]string{false: "keyless same key", true: "financial profile replacement"}[financial], func(t *testing.T) {
+		t.Run(map[bool]string{false: "read-only fresh key", true: "financial fresh key"}[financial], func(t *testing.T) {
 			f := newCatalogFixture(t)
 			ctx := context.Background()
 			if err := f.store.Exclusive(ctx, func() error {
@@ -366,10 +368,9 @@ func TestRemoteCatalogRejectsSavedLoginReplacementDuringDiscovery(t *testing.T) 
 				if err != nil {
 					return err
 				}
-				replacement.AuthorizationGeneration = "replacement-login"
+				replacement.DeviceKey = testKey(t)
 				replacement.Tokens = &Tokens{"replacement-login-access", "replacement-login-refresh", time.Now().Add(time.Hour).UnixMilli()}
 				if financial {
-					replacement.CredentialPolicyProfile = "wallet-transfer-v1"
 					replacement.Enrollment = &Receipt{ConnectionID: testOtherID, State: "awaiting_provider"}
 				}
 				f.replacement = replacement
@@ -378,7 +379,11 @@ func TestRemoteCatalogRejectsSavedLoginReplacementDuringDiscovery(t *testing.T) 
 				t.Fatal(err)
 			}
 			f.replaceOnDiscoveryStart.Store(true)
-			if _, err := f.remote.Call(ctx, "reah_mutate", document{}); err == nil {
+			name := "reah_read"
+			if financial {
+				name = "reah_mutate"
+			}
+			if _, err := f.remote.Call(ctx, name, document{}); err == nil {
 				t.Fatal("pending invocation followed replacement login")
 			}
 			if f.calls.Load() != 0 {
@@ -398,7 +403,7 @@ func TestRemoteBearerRejectsReplacementAfterDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := f.store.Exclusive(ctx, func() error {
-		f.store.s.AuthorizationGeneration = "replacement-login"
+		f.store.s.DeviceKey = testKey(t)
 		f.store.s.Tokens = &Tokens{"new-login", "new-refresh", time.Now().Add(time.Hour).UnixMilli()}
 		return nil
 	}); err != nil {
@@ -412,8 +417,9 @@ func TestRemoteBearerRejectsReplacementAfterDiscovery(t *testing.T) {
 	}
 }
 
-func TestConcurrentInvocationsFollowObservedSameGrantRefresh(t *testing.T) {
+func TestConcurrentInvocationsFollowSameGrantRefresh(t *testing.T) {
 	f := newCatalogFixture(t)
+	originalKey := f.store.s.DeviceKey
 	base := context.Background()
 	first, err := f.remote.bindInvocation(base)
 	if err != nil {
@@ -437,8 +443,8 @@ func TestConcurrentInvocationsFollowObservedSameGrantRefresh(t *testing.T) {
 		}(ctx)
 	}
 	wg.Wait()
-	if f.rotations.Load() != 1 {
-		t.Fatal("refresh was not serialized once")
+	if f.rotations.Load() != 1 || f.store.s.DeviceKey != originalKey {
+		t.Fatal("refresh was not serialized once or replaced login key")
 	}
 	for _, ctx := range []context.Context{first, second} {
 		if _, err := f.remote.invoke(ctx, "reah_read", document{}); err != nil {
@@ -452,6 +458,7 @@ func TestConcurrentInvocationsFollowObservedSameGrantRefresh(t *testing.T) {
 
 func TestUnboundRefreshPreservesPendingInvocationsAndCatalog(t *testing.T) {
 	f := newCatalogFixture(t)
+	originalKey := f.store.s.DeviceKey
 	base := context.Background()
 	if _, err := f.remote.List(base); err != nil {
 		t.Fatal(err)
@@ -464,7 +471,7 @@ func TestUnboundRefreshPreservesPendingInvocationsAndCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A separate status check or process performs refresh outside the pending
-	// request context while preserving the saved authorization generation.
+	// request context while preserving the existing login key.
 	other := &OAuth{f.remote.OAuth.Config, f.store, f.remote.OAuth.HTTP}
 	if _, err := other.AccessToken(base); err != nil {
 		t.Fatal(err)
@@ -475,44 +482,29 @@ func TestUnboundRefreshPreservesPendingInvocationsAndCatalog(t *testing.T) {
 	if _, err := f.remote.Call(base, "reah_read", document{}); err != nil {
 		t.Fatal(err)
 	}
-	if f.rotations.Load() != 1 || f.lists.Load() != 1 || f.calls.Load() != 2 {
+	if f.store.s.DeviceKey != originalKey || f.rotations.Load() != 1 || f.lists.Load() != 1 || f.calls.Load() != 2 {
 		t.Fatal("normal refresh invalidated metadata or replayed")
 	}
 }
 
-func TestMissingAuthorizationGenerationRequiresReconnectButAllowsCleanup(t *testing.T) {
+func TestExistingSavedSessionReadsAndRefreshesWithoutNewLogin(t *testing.T) {
 	f := newCatalogFixture(t)
 	ctx := context.Background()
-	if err := f.store.Exclusive(ctx, func() error { f.store.s.AuthorizationGeneration = ""; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.remote.Call(ctx, "reah_read", document{}); err == nil {
-		t.Fatal("old authorization silently acquired a marker")
-	}
-	if f.calls.Load() != 0 || f.lists.Load() != 0 {
-		t.Fatal("missing generation dispatched")
+	// This is the existing Session shape: no new migration or login is needed.
+	originalKey := f.store.s.DeviceKey
+	if _, err := f.remote.Call(ctx, "reah_read", document{}); err != nil {
+		t.Fatal("existing saved authorization rejected", err)
 	}
 	if err := f.store.Exclusive(ctx, func() error {
-		s, err := f.store.Read()
-		if err != nil {
-			return err
-		}
-		if s.Tokens == nil || s.AuthorizationGeneration != "" {
-			t.Fatal("old authorization unavailable for normal login/logout cleanup")
-		}
+		f.store.s.Tokens.ExpiresAt = 1
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.remote.OAuth.Logout(ctx); err != nil {
-		t.Fatal("old authorization could not be revoked for reconnect", err)
+	if _, err := f.remote.Call(ctx, "reah_read", document{}); err != nil {
+		t.Fatal("existing authorization could not refresh under invocation guard", err)
 	}
-	if err := f.store.Exclusive(ctx, func() error {
-		if f.store.s != nil {
-			t.Fatal("old authorization remained after cleanup")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
+	if f.store.s.DeviceKey != originalKey || f.rotations.Load() != 1 || f.lists.Load() != 1 || f.calls.Load() != 2 {
+		t.Fatal("normal refresh replaced login key, rediscovered, or replayed")
 	}
 }

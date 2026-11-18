@@ -49,7 +49,7 @@ func TestBankTransferExecutionRequiresAdvertisedBusiness(t *testing.T) {
 			}))
 			defer server.Close()
 			config, _ := Configure(server.URL+"/mcp", "test")
-			oauth := &OAuth{config, &memoryStore{s: &Session{AuthorizationGeneration: "fixture-login", Version: 1, Server: config.Server, ClientID: "client", CredentialEnrollmentRequested: true, Enrollment: &Receipt{State: "awaiting_provider"}, DeviceKey: testKey(t), Tokens: &Tokens{"current-token", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}, server.Client()}
+			oauth := &OAuth{config, &memoryStore{s: &Session{Version: 1, Server: config.Server, ClientID: "client", CredentialEnrollmentRequested: true, Enrollment: &Receipt{State: "awaiting_provider"}, DeviceKey: testKey(t), Tokens: &Tokens{"current-token", "refresh", time.Now().Add(time.Hour).UnixMilli()}}}, server.Client()}
 			remote := &Remote{OAuth: oauth, Version: "test"}
 			defer remote.Close()
 			result, err := remote.Call(ctx, "renamed-financial-execution", document{"entityId": testID, "approvalId": testOtherID, "business": "bank_internal_transfer"})
