@@ -458,3 +458,12 @@ reviewed client revision. It also verifies authentic synthetic execution
 continuations. Neither path adds business decoding or a protocol version to the
 client. The Gateway repository's `scripts/test-mcp-client-contract.sh` provides
 the combined check against explicit committed repository revisions.
+
+The committed Gateway corpus records its exact producer and additive Ledger API
+source revisions plus SHA-256 in `gateway-prepared-corpus.provenance.json`. The
+local consumer verifies this digest; candidate Gateway CI consumes fresh output
+instead. To reproduce the bootstrap artifact, check out both recorded revisions,
+use a temporary Gateway module file pointing the Ledger API module to its
+recorded `api/go` checkout, and run `TestExportPreparedApprovalClientCorpus` with
+`REAH_MCP_GATEWAY_CORPUS_OUT` set to the destination JSON path. No credentials or
+private key are present in this synthetic artifact.
