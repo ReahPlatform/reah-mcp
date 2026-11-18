@@ -16,10 +16,13 @@ import (
 )
 
 type catalogFixture struct {
-	remote            *Remote
-	store             *memoryStore
-	lists, calls      atomic.Int32
-	deny, fail, extra atomic.Bool
+	remote                 *Remote
+	store                  *memoryStore
+	lists, calls           atomic.Int32
+	deny, fail, extra      atomic.Bool
+	rotateOnDiscoveryStart atomic.Bool
+	rotations              atomic.Int32
+	churnOnList            atomic.Bool
 }
 
 func newCatalogFixture(t *testing.T) *catalogFixture {
@@ -37,6 +40,10 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 			return &mcp.CallToolResult{StructuredContent: document{"ok": true}, Content: []mcp.Content{}}, nil
 		})
 	}
+	sdk.AddTool(&mcp.Tool{Name: "reah_catalog", InputSchema: document{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		f.calls.Add(1)
+		return &mcp.CallToolResult{Content: []mcp.Content{}, StructuredContent: document{"write_operations": []any{document{"requestTool": "reah_new"}}}}, nil
+	})
 	sdk.AddTool(&mcp.Tool{Name: "reah_future", InputSchema: document{"type": "object"}, Meta: mcp.Meta{localMeta: document{"version": 1, "mode": "signed", "signing": "unknown-protocol"}}, Annotations: &mcp.ToolAnnotations{}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		t.Error("unknown signing protocol was dispatched")
 		return nil, nil
@@ -62,6 +69,11 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 	})
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return sdk }, &mcp.StreamableHTTPOptions{Stateless: true})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/mcp/oauth/token" {
+			f.rotations.Add(1)
+			_ = json.NewEncoder(w).Encode(document{"access_token": "rotated-access", "refresh_token": "rotated-refresh", "expires_in": 900, "scope": Scope, "token_type": "Bearer"})
+			return
+		}
 		// Read the method without logging or consuming the SDK request.
 		raw, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(bytes.NewReader(raw))
@@ -69,6 +81,17 @@ func newCatalogFixture(t *testing.T) *catalogFixture {
 			Method string `json:"method"`
 		}
 		_ = json.Unmarshal(raw, &req)
+		if req.Method == "tools/list" && f.churnOnList.Load() {
+			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.Tokens.AccessToken += "x"; return nil }); err != nil {
+				t.Error(err)
+			}
+		}
+
+		if (req.Method == "initialize" || req.Method == "server/discover") && f.rotateOnDiscoveryStart.CompareAndSwap(true, false) {
+			if err := f.store.Exclusive(r.Context(), func() error { f.store.s.Tokens.ExpiresAt = time.Now().Add(-time.Second).UnixMilli(); return nil }); err != nil {
+				t.Error(err)
+			}
+		}
 		if f.deny.Load() {
 			http.Error(w, "denied", http.StatusUnauthorized)
 			return
@@ -249,5 +272,70 @@ func TestRemoteCatalogConcurrentSnapshotsAreIsolated(t *testing.T) {
 	}
 	if f.lists.Load() != 1 {
 		t.Fatal("snapshot was not reused")
+	}
+}
+
+func TestRemoteCatalogAcceptsTransportRotationAfterPreflight(t *testing.T) {
+	f := newCatalogFixture(t)
+	f.rotateOnDiscoveryStart.Store(true)
+	if _, err := f.remote.Call(context.Background(), "reah_read", document{}); err != nil {
+		t.Fatal("successful transport rotation rejected discovery", err)
+	}
+	if f.rotations.Load() != 1 || f.lists.Load() != 2 || f.calls.Load() != 1 {
+		t.Fatalf("rotation/list/dispatch counts %d/%d/%d", f.rotations.Load(), f.lists.Load(), f.calls.Load())
+	}
+	if _, err := f.remote.Call(context.Background(), "reah_read", document{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.lists.Load() != 2 {
+		t.Fatal("fresh rotated catalog was not cached")
+	}
+}
+
+func TestRemoteExplicitCatalogObservesProviderRegistrationWithoutVaultChange(t *testing.T) {
+	f := newCatalogFixture(t)
+	ctx := context.Background()
+	if err := f.store.Exclusive(ctx, func() error {
+		f.store.s.Enrollment = &Receipt{ConnectionID: testID, State: "awaiting_provider"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.remote.catalogIdentity(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.remote.Call(ctx, "reah_catalog", document{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.StructuredContent.(document)["write_operations"].([]any)) != 0 {
+		t.Fatal("hidden operation advertised")
+	}
+	f.extra.Store(true)
+	out, err = f.remote.Call(ctx, "reah_catalog", document{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.StructuredContent.(document)["write_operations"].([]any)) != 1 {
+		t.Fatal("fresh capability discovery was filtered with stale schema")
+	}
+	after, err := f.remote.catalogIdentity(ctx, false)
+	if err != nil || before != after {
+		t.Fatal("fixture unexpectedly changed saved enrollment", err)
+	}
+	if f.lists.Load() != 2 || f.calls.Load() != 2 {
+		t.Fatal("explicit catalog must refresh once and invoke once")
+	}
+}
+
+func TestRemoteCatalogLifecycleChurnStopsBeforeDispatch(t *testing.T) {
+	f := newCatalogFixture(t)
+	f.churnOnList.Store(true)
+	if _, err := f.remote.Call(context.Background(), "reah_mutate", document{}); err == nil {
+		t.Fatal("unstable discovery accepted")
+	}
+	if f.lists.Load() != 2 || f.calls.Load() != 0 {
+		t.Fatal("discovery retry was unbounded or reached dispatch")
 	}
 }

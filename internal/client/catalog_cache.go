@@ -91,8 +91,21 @@ func (r *Remote) catalog(ctx context.Context, refresh bool) ([]*mcp.Tool, bool, 
 		return nil, false, err
 	}
 	current, err := r.catalogIdentity(ctx, false)
-	if err != nil || current != identity {
+	if err != nil {
 		return nil, false, errConnection
+	}
+	if current != identity {
+		// The transport can successfully rotate OAuth tokens after preflight.
+		// Repeat discovery once under the new lifecycle, never a tool call.
+		identity = current
+		tools, err = r.fetchTools(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		current, err = r.catalogIdentity(ctx, false)
+		if err != nil || current != identity {
+			return nil, false, errConnection
+		}
 	}
 	raw, err := json.Marshal(tools)
 	if err != nil {

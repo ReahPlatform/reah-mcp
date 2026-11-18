@@ -237,7 +237,9 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 			return nil, errors.New("signing material is supplied by the local client, never tool arguments")
 		}
 	}
-	tools, cached, e := r.catalog(ctx, false)
+	// Explicit capability discovery must reflect provider-side registration
+	// changes even when the local enrollment receipt has not changed.
+	tools, cached, e := r.catalog(ctx, name == "reah_catalog")
 	if e != nil {
 		return nil, e
 	}

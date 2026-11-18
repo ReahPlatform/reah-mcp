@@ -75,10 +75,28 @@ func TestGatewayCandidateCorpus(t *testing.T) {
 				}
 				return f
 			}
-			f := clone()
 			key := testKey(t)
-			f.Context.Binding.PublicKey = key.PublicKey
-			f.Prepared["publicKey"] = key.PublicKey
+			for name, mutate := range map[string]func(*gatewayPreparationFixture){
+				"missing producer echo":    func(f *gatewayPreparationFixture) { delete(f.Prepared, "publicKey") },
+				"malformed producer echo":  func(f *gatewayPreparationFixture) { f.Prepared["publicKey"] = "invalid" },
+				"mismatched producer echo": func(f *gatewayPreparationFixture) { f.Prepared["publicKey"] = key.PublicKey },
+				"malformed producer binding": func(f *gatewayPreparationFixture) {
+					f.Context.Binding.PublicKey = "invalid"
+					f.Prepared["publicKey"] = "invalid"
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					negative := clone()
+					mutate(&negative)
+					if rebindGatewayPreparationKey(&negative, key) == nil {
+						t.Fatal("invalid producer key binding repaired by test")
+					}
+				})
+			}
+			f := clone()
+			if err := rebindGatewayPreparationKey(&f, key); err != nil {
+				t.Fatal(err)
+			}
 			now, e := time.Parse(time.RFC3339Nano, f.Now)
 			if e != nil {
 				t.Fatal(e)
@@ -104,17 +122,20 @@ func TestGatewayCandidateCorpus(t *testing.T) {
 			}
 			verifyText(t, key, stringAt(signature, "payloadBytes"), stringAt(signature, "signature"), false)
 			for name, mutate := range map[string]func(document){
-				"entity":           func(d document) { d["entityId"] = testOtherID },
-				"nonce":            func(d document) { d["requestId"] = "00000000-0000-4000-8000-000000000001" },
-				"input":            func(d document) { d["input"].(map[string]any)["changed"] = true },
-				"arguments":        func(d document) { d["arguments"].(map[string]any)["changed"] = true },
-				"expired":          func(d document) { d["expiresAt"] = now.Add(-time.Second).Format(time.RFC3339Nano) },
-				"payload encoding": func(d document) { d["payloadBytes"] = stringAt(d, "payloadBytes") + "\n" },
+				"wrong public key":   func(d document) { d["publicKey"] = testKey(t).PublicKey },
+				"missing public key": func(d document) { delete(d, "publicKey") },
+				"entity":             func(d document) { d["entityId"] = testOtherID },
+				"nonce":              func(d document) { d["requestId"] = "00000000-0000-4000-8000-000000000001" },
+				"input":              func(d document) { d["input"].(map[string]any)["changed"] = true },
+				"arguments":          func(d document) { d["arguments"].(map[string]any)["changed"] = true },
+				"expired":            func(d document) { d["expiresAt"] = now.Add(-time.Second).Format(time.RFC3339Nano) },
+				"payload encoding":   func(d document) { d["payloadBytes"] = stringAt(d, "payloadBytes") + "\n" },
 			} {
 				t.Run(name, func(t *testing.T) {
 					negative := clone()
-					negative.Context.Binding.PublicKey = key.PublicKey
-					negative.Prepared["publicKey"] = key.PublicKey
+					if err := rebindGatewayPreparationKey(&negative, key); err != nil {
+						t.Fatal(err)
+					}
 					mutate(negative.Prepared)
 					if _, _, err := preparedApproval(key, negative.Context, negative.Tool, negative.Arguments, negative.Prepared, now); err == nil {
 						t.Fatal("altered candidate binding accepted")

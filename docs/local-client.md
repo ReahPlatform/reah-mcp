@@ -8,12 +8,16 @@ program at all.
 
 ## Tool discovery snapshots
 
-Explicit tool discovery refreshes the authenticated Gateway catalog. Ordinary
+Explicit tool discovery and `reah_catalog` refresh the authenticated Gateway
+tool definitions, including provider registration changes that do not alter the
+local enrollment receipt. Ordinary
 calls can reuse its public schema and signing-protocol metadata for up to one
 minute. The snapshot is memory-only and bounded. Closing the connection clears
 it immediately; changes to its saved token, device key, profile or enrollment
 invalidate it before the next use.
-An unknown tool triggers fresh discovery before any dispatch. Returned schemas
+Successful OAuth rotation during discovery allows one fresh discovery-only
+repeat under the new token lifecycle. An unknown tool triggers fresh discovery
+before any dispatch. Returned schemas
 are independent copies; a host cannot modify the snapshot.
 
 This snapshot grants no authority. Every invocation still authenticates at the
