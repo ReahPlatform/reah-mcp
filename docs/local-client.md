@@ -6,6 +6,22 @@ the operating system credential store. Running it does not require Node.js,
 npm, or an npm account. The hosted read-only connection still requires no local
 program at all.
 
+## Tool discovery snapshots
+
+Explicit tool discovery refreshes the authenticated Gateway catalog. Ordinary
+calls can reuse its public schema and signing-protocol metadata for up to one
+minute. The snapshot is memory-only and bounded. Closing the connection clears
+it immediately; changes to its saved token, device key, profile or enrollment
+invalidate it before the next use.
+An unknown tool triggers fresh discovery before any dispatch. Returned schemas
+are independent copies; a host cannot modify the snapshot.
+
+This snapshot grants no authority. Every invocation still authenticates at the
+server, and signed calls obtain fresh signing context and exact request proofs.
+Authorization, funds, prices, allowances, signing receipts and payment results
+are never cached as authority. A failed or uncertain dispatched write is never
+automatically resubmitted to refresh metadata.
+
 ## Install
 
 From a checkout, use Go 1.25 or newer:
@@ -426,3 +442,19 @@ never funds that record and is advertised as non-read-only and non-destructive. 
 the network or gas payer. Explicitly pass the selected `gasSource` to
 `reah_transfer`; the local program signs it together with the transfer details.
 The hosted read-only connection does not gain these credential-gated tools.
+
+## Gateway protocol contract checks
+
+Client CI consumes `internal/client/testdata/gateway-prepared-corpus.json`,
+exported by the actual Gateway encoder and production response projection at
+its documented producer revision. This is public synthetic data, not a saved
+customer request. Missing or invalid corpus data fails the client contract test.
+The corpus covers context-free and context-bearing approvals, context stripping,
+descriptive annotations, exact opaque signature bytes and protected bindings.
+
+Gateway candidate CI supplies a newly exported corpus through
+`REAH_MCP_GATEWAY_CORPUS`, then runs this same real client validator at a fixed
+reviewed client revision. It also verifies authentic synthetic execution
+continuations. Neither path adds business decoding or a protocol version to the
+client. The Gateway repository's `scripts/test-mcp-client-contract.sh` provides
+the combined check against explicit committed repository revisions.

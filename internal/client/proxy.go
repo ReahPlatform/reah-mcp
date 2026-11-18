@@ -153,10 +153,13 @@ func (t bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 type Remote struct {
-	OAuth   *OAuth
-	Version string
-	mu      sync.Mutex
-	session *mcp.ClientSession
+	OAuth             *OAuth
+	Version           string
+	mu                sync.Mutex
+	session           *mcp.ClientSession
+	catalogMu         sync.Mutex
+	catalogSnapshot   catalogSnapshot
+	catalogGeneration uint64
 }
 
 func (r *Remote) connected(ctx context.Context) (*mcp.ClientSession, error) {
@@ -176,6 +179,7 @@ func (r *Remote) connected(ctx context.Context) (*mcp.ClientSession, error) {
 	return s, nil
 }
 func (r *Remote) Close() {
+	r.invalidateCatalog()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.session != nil {
@@ -184,9 +188,11 @@ func (r *Remote) Close() {
 	}
 }
 func (r *Remote) List(ctx context.Context) ([]*mcp.Tool, error) {
-	if _, e := r.OAuth.AccessToken(ctx); e != nil {
-		return nil, e
-	}
+	tools, _, err := r.catalog(ctx, true)
+	return tools, err
+}
+
+func (r *Remote) fetchTools(ctx context.Context) ([]*mcp.Tool, error) {
 	s, e := r.connected(ctx)
 	if e != nil {
 		return nil, e
@@ -231,7 +237,7 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 			return nil, errors.New("signing material is supplied by the local client, never tool arguments")
 		}
 	}
-	tools, e := r.List(ctx)
+	tools, cached, e := r.catalog(ctx, false)
 	if e != nil {
 		return nil, e
 	}
@@ -240,6 +246,19 @@ func (r *Remote) Call(ctx context.Context, name string, args document) (*mcp.Cal
 		if t.Name == name {
 			tool = t
 			break
+		}
+	}
+	// Refresh missing metadata before dispatch, never replay a dispatched call.
+	if tool == nil && cached {
+		tools, _, e = r.catalog(ctx, true)
+		if e != nil {
+			return nil, e
+		}
+		for _, t := range tools {
+			if t.Name == name {
+				tool = t
+				break
+			}
 		}
 	}
 	if tool == nil {
