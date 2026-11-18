@@ -6,6 +6,31 @@ the operating system credential store. Running it does not require Node.js,
 npm, or an npm account. The hosted read-only connection still requires no local
 program at all.
 
+## Tool discovery snapshots
+
+Explicit tool discovery and `reah_catalog` refresh the authenticated Gateway
+tool definitions, including provider registration changes that do not alter the
+local enrollment receipt. Ordinary
+calls can reuse its public schema and signing-protocol metadata for up to one
+minute. The snapshot is memory-only and bounded. Closing the connection clears
+it immediately; changes to the saved login key, profile or enrollment invalidate
+it before the next use. Normal token refresh preserves both the login key and
+eligible metadata, including refresh by another process or a status check. Each
+pending invocation remains bound to its original saved authorization at every
+bearer selection. Browser login always creates a fresh device key, including for
+read-only consent, preventing older pending calls from switching to replacement
+authorization. Already selected bearers remain subject to server authorization.
+Existing saved sessions continue using their validated device key without new
+fields or a new login. An unknown tool triggers fresh discovery
+before dispatch. Returned schemas are independent copies; a host cannot modify
+the snapshot.
+
+This snapshot grants no authority. Every invocation still authenticates at the
+server, and signed calls obtain fresh signing context and exact request proofs.
+Authorization, funds, prices, allowances, signing receipts and payment results
+are never cached as authority. A failed or uncertain dispatched write is never
+automatically resubmitted to refresh metadata.
+
 ## Install
 
 From a checkout, use Go 1.25 or newer:
@@ -426,3 +451,28 @@ never funds that record and is advertised as non-read-only and non-destructive. 
 the network or gas payer. Explicitly pass the selected `gasSource` to
 `reah_transfer`; the local program signs it together with the transfer details.
 The hosted read-only connection does not gain these credential-gated tools.
+
+## Gateway protocol contract checks
+
+Client CI consumes `internal/client/testdata/gateway-prepared-corpus.json`,
+exported by the actual Gateway encoder and production response projection at
+its documented producer revision. This is public synthetic data, not a saved
+customer request. Missing or invalid corpus data fails the client contract test.
+The corpus covers context-free and context-bearing approvals, context stripping,
+descriptive annotations, exact opaque signature bytes and protected bindings.
+
+Gateway candidate CI supplies a newly exported corpus through
+`REAH_MCP_GATEWAY_CORPUS`, then runs this same real client validator at a fixed
+reviewed client revision. It also verifies authentic synthetic execution
+continuations. Neither path adds business decoding or a protocol version to the
+client. The Gateway repository's `scripts/test-mcp-client-contract.sh` provides
+the combined check against explicit committed repository revisions.
+
+The committed Gateway corpus records its exact producer and additive Ledger API
+source revisions plus SHA-256 in `gateway-prepared-corpus.provenance.json`. The
+local consumer verifies this digest; candidate Gateway CI consumes fresh output
+instead. To reproduce the bootstrap artifact, check out both recorded revisions,
+use a temporary Gateway module file pointing the Ledger API module to its
+recorded `api/go` checkout, and run `TestExportPreparedApprovalClientCorpus` with
+`REAH_MCP_GATEWAY_CORPUS_OUT` set to the destination JSON path. No credentials or
+private key are present in this synthetic artifact.

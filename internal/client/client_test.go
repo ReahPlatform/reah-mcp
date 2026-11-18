@@ -222,6 +222,7 @@ func TestRefreshRotatesOnceAndNeverReplays(t *testing.T) {
 	c, _ := Configure(server.URL+"/mcp", "test")
 	store := &memoryStore{s: &Session{Version: 1, Server: c.Server, ClientID: "client", DeviceKey: testKey(t), Tokens: &Tokens{"expired", "old-refresh", 1}}}
 	o := &OAuth{c, store, server.Client()}
+	originalKey := store.s.DeviceKey
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -234,6 +235,9 @@ func TestRefreshRotatesOnceAndNeverReplays(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	if store.s.DeviceKey != originalKey {
+		t.Fatal("refresh replaced login key")
+	}
 	if requests.Load() != 1 {
 		t.Fatal("concurrent refresh replayed token")
 	}
@@ -306,44 +310,47 @@ func TestOAuthLoginPKCECallbackAndLogout(t *testing.T) {
 	store := &memoryStore{}
 	o := &OAuth{c, store, server.Client()}
 	completed := make(chan error, 1)
-	e := o.Login(ctx, false, func(address string) error {
-		u, e := url.Parse(address)
-		if e != nil {
-			return e
-		}
-		q := u.Query()
-		challenge = q.Get("code_challenge")
-		redirect = q.Get("redirect_uri")
-		callback, _ := url.Parse(redirect)
-		values := url.Values{"state": {q.Get("state")}, "code": {"one-use-code"}, "iss": {origin}}
-		callback.RawQuery = values.Encode()
-		go func() {
-			bad := *callback
-			bq := bad.Query()
-			bq.Set("state", "wrong")
-			bad.RawQuery = bq.Encode()
-			response, e := http.Get(bad.String())
+	login := func() error {
+		return o.Login(ctx, false, func(address string) error {
+			u, e := url.Parse(address)
 			if e != nil {
-				completed <- e
-				return
+				return e
 			}
-			_ = response.Body.Close()
-			if response.StatusCode != 400 {
-				completed <- errors.New("wrong state accepted")
-				return
-			}
-			response, e = http.Get(callback.String())
-			if e == nil {
-				defer response.Body.Close()
-				b, _ := io.ReadAll(response.Body)
-				if response.StatusCode != 200 || !strings.Contains(string(b), "Authentication complete") {
-					e = errors.New("callback did not complete")
+			q := u.Query()
+			challenge = q.Get("code_challenge")
+			redirect = q.Get("redirect_uri")
+			callback, _ := url.Parse(redirect)
+			values := url.Values{"state": {q.Get("state")}, "code": {"one-use-code"}, "iss": {origin}}
+			callback.RawQuery = values.Encode()
+			go func() {
+				bad := *callback
+				bq := bad.Query()
+				bq.Set("state", "wrong")
+				bad.RawQuery = bq.Encode()
+				response, e := http.Get(bad.String())
+				if e != nil {
+					completed <- e
+					return
 				}
-			}
-			completed <- e
-		}()
-		return nil
-	})
+				_ = response.Body.Close()
+				if response.StatusCode != 400 {
+					completed <- errors.New("wrong state accepted")
+					return
+				}
+				response, e = http.Get(callback.String())
+				if e == nil {
+					defer response.Body.Close()
+					b, _ := io.ReadAll(response.Body)
+					if response.StatusCode != 200 || !strings.Contains(string(b), "Authentication complete") {
+						e = errors.New("callback did not complete")
+					}
+				}
+				completed <- e
+			}()
+			return nil
+		})
+	}
+	e := login()
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -353,6 +360,21 @@ func TestOAuthLoginPKCECallbackAndLogout(t *testing.T) {
 	if store.s == nil || store.s.Tokens == nil || store.s.Tokens.AccessToken != "access" {
 		t.Fatal("tokens not saved")
 	}
+	firstPublicKey := store.s.DeviceKey.PublicKey
+	if firstPublicKey == "" {
+		t.Fatal("successful login did not create a device key")
+	}
+	if err := login(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-completed; err != nil {
+		t.Fatal(err)
+	}
+	if store.s.DeviceKey.PublicKey == "" || store.s.DeviceKey.PublicKey == firstPublicKey {
+		t.Fatal("new successful consent retained old login key")
+	}
+	previousRevocations := revoked.Load()
+
 	status, e := o.Status(ctx)
 	if e != nil {
 		t.Fatal(e)
@@ -364,7 +386,7 @@ func TestOAuthLoginPKCECallbackAndLogout(t *testing.T) {
 	if e = o.Logout(ctx); e != nil {
 		t.Fatal(e)
 	}
-	if store.s != nil || revoked.Load() != 1 {
+	if store.s != nil || revoked.Load() != previousRevocations+1 {
 		t.Fatal("logout did not revoke and remove")
 	}
 }

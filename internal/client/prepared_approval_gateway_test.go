@@ -1,7 +1,10 @@
 package client
 
 import (
+	"crypto/elliptic"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -32,9 +35,27 @@ func gatewayPreparation(t *testing.T) (gatewayPreparationFixture, DeviceKey, tim
 	// The fixture has no private key. Rebind only the unsigned public-key echoes
 	// to an ephemeral test key; Gateway's signed payload bytes remain untouched.
 	key := testKey(t)
-	fixture.Context.Binding.PublicKey = key.PublicKey
-	fixture.Prepared["publicKey"] = key.PublicKey
+	if err := rebindGatewayPreparationKey(&fixture, key); err != nil {
+		t.Fatal(err)
+	}
 	return fixture, key, now
+}
+
+// Check the actual producer echo before replacing public test material. Rebinding
+// must never repair a response that the running client would reject.
+func rebindGatewayPreparationKey(f *gatewayPreparationFixture, key DeviceKey) error {
+	public := f.Context.Binding.PublicKey
+	compressed, err := hex.DecodeString(public)
+	if err != nil || hex.EncodeToString(compressed) != public {
+		return errors.New("producer binding has an invalid public key")
+	}
+	x, _ := elliptic.UnmarshalCompressed(elliptic.P256(), compressed)
+	if x == nil || f.Prepared["publicKey"] != public {
+		return errors.New("producer public-key echo does not match its binding")
+	}
+	f.Context.Binding.PublicKey = key.PublicKey
+	f.Prepared["publicKey"] = key.PublicKey
+	return nil
 }
 
 func TestPreparedApprovalAcceptsGatewayProducedEnvelope(t *testing.T) {

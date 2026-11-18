@@ -153,6 +153,9 @@ func (o *OAuth) AccessToken(ctx context.Context) (string, error) {
 		if s == nil || s.Tokens == nil {
 			return &connectionError{Code: "login_required", Message: "Reah has no usable local OAuth credentials; run status with this server and profile for the exact login command"}
 		}
+		if err := checkInvocationCredentials(ctx, o.Config, s); err != nil {
+			return err
+		}
 		if s.Tokens.ExpiresAt > time.Now().Add(30*time.Second).UnixMilli() {
 			token = s.Tokens.AccessToken
 			return nil

@@ -1,0 +1,13 @@
+{
+  "gatewayRepository": "ReahPlatform/reah-graphql-gateway",
+  "gatewayRevision": "ad2dfd1db36ee2d2730f88b4c8d629d7cf00ee59",
+  "ledgerApiRepository": "ReahPlatform/reah-ledger",
+  "ledgerApiRevision": "6c52941f74ab0c4f3902cc10914dee6f68634ece",
+  "ledgerApiDirectory": "api/go",
+  "sha256": "e8bc25012bc020e2b85a4d348c5ae1cda51665a0a0749b1347e848cd0e8e47de",
+  "producerTest": "TestExportPreparedApprovalClientCorpus",
+  "buildContext": "Gateway candidate uses the additive Ledger MCP API from the recorded revision through a temporary Go module override; no tracked replacement.",
+  "exportVariable": "REAH_MCP_GATEWAY_CORPUS_OUT",
+  "syntheticOnly": true,
+  "containsPrivateKeys": false
+}
