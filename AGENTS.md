@@ -18,7 +18,8 @@
 - Store local OAuth credentials and device keys in the OS credential store only.
   Never expose an arbitrary signing tool or enroll keys through Web session APIs.
   Device keys authorize transfers only after explicit user-confirmed browser registration and live server validation.
-- Default plugin connections to staging until production is explicitly approved.
+- Default plugin connections and the Go client to production. Keep staging
+  explicit and its credentials and signing trust root isolated.
   Never package credentials, bearer headers, fixed entity IDs, or login sessions.
 - Keep the hosted plugin read-only. Document only tools, fields, units, and arguments verified
   against the Gateway catalog. Its live tool schemas are authoritative; do not

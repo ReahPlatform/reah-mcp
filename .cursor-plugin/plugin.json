@@ -1,6 +1,6 @@
 {
   "name": "reah",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Connect to Reah hosted read-only financial tools with OAuth sign-in and a financial analysis skill.",
   "author": {
     "name": "ReahPlatform"

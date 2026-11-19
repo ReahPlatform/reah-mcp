@@ -122,6 +122,32 @@ func TestConfigure(t *testing.T) {
 	if a.ID == b.ID {
 		t.Fatal("profiles share vault identity")
 	}
+	if a.Server != "https://platform.reah.com/mcp" || a.Origin != "https://platform.reah.com" {
+		t.Fatal("default client does not use production")
+	}
+	staging, err := Configure(StagingServer, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staging.ID == a.ID {
+		t.Fatal("production and staging share vault identity")
+	}
+}
+
+func TestExecutionVerificationKeysAreBoundToEnvironment(t *testing.T) {
+	for _, tc := range []struct{ resource, expected string }{
+		{"https://platform.reah.com/mcp", productionKey},
+		{"https://platform.stg.reah.com/mcp", stagingKey},
+		{DefaultServer, productionKey},
+		{"https://untrusted.example/mcp", ""},
+		{"https://platform.reah.com/mcp?environment=stg", ""},
+	} {
+		t.Run(tc.resource, func(t *testing.T) {
+			if got := executionVerificationKey(tc.resource); got != tc.expected {
+				t.Fatal("incorrect execution trust root")
+			}
+		})
+	}
 }
 
 func TestExecutionContinuationAndAmbiguity(t *testing.T) {

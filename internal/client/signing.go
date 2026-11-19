@@ -62,6 +62,17 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEP0tIL+DaFftn17dRB87c19wbf5QV
 4NYTeww6cXvSILTf3rFRvflz6EApe9mGA2+6v/6lD7dLhVAdcej3kSyQrg==
 -----END PUBLIC KEY-----`
 
+func executionVerificationKey(resource string) string {
+	switch resource {
+	case ProductionServer:
+		return productionKey
+	case StagingServer:
+		return stagingKey
+	default:
+		return ""
+	}
+}
+
 func executionStamp(key DeviceKey, c SigningContext, item document, verificationKey string) (document, error) {
 	bad := errors.New("untrusted execution signing request; inspect the original approval before retrying")
 	payload, id := stringAt(item, "requestPayload"), stringAt(item, "requestId")
@@ -69,14 +80,7 @@ func executionStamp(key DeviceKey, c SigningContext, item document, verification
 		return nil, bad
 	}
 	if verificationKey == "" {
-		switch c.Resource {
-		case DefaultServer:
-			verificationKey = stagingKey
-		case "https://platform.reah.com/mcp":
-			verificationKey = productionKey
-		default:
-			return nil, bad
-		}
+		verificationKey = executionVerificationKey(c.Resource)
 	}
 	p, _ := pem.Decode([]byte(verificationKey))
 	if p == nil {

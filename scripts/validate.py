@@ -6,7 +6,7 @@ import re
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
-STAGING_URL = "https://platform.stg.reah.com/mcp"
+PRODUCTION_URL = "https://platform.reah.com/mcp"
 MANIFESTS = (
     "plugin.json", ".claude-plugin/plugin.json",
     ".codex-plugin/plugin.json", ".cursor-plugin/plugin.json",
@@ -49,10 +49,10 @@ def validate(root=ROOT):
         require(manifest["version"] == version, f"plugin version mismatch: {path}")
         require(manifest["repository"] == "https://github.com/ReahPlatform/reah-mcp", f"invalid repository: {path}")
 
-    expected = {"reah": {"type": "http", "url": STAGING_URL}}
-    for path in (".mcp.json", "mcp.json", "examples/staging.mcp.json"):
+    expected = {"reah": {"type": "http", "url": PRODUCTION_URL}}
+    for path in (".mcp.json", "mcp.json", "examples/production.mcp.json"):
         require(read_json(root, path)["mcpServers"] == expected,
-                f"expected credential-free hosted staging connection: {path}")
+                f"expected credential-free hosted production connection: {path}")
     require(read_json(root, ".codex-plugin/plugin.json")["mcpServers"] == "./.mcp.json",
             "Codex must load the packaged MCP configuration")
     claude = read_json(root, ".claude-plugin/marketplace.json")["plugins"][0]
@@ -104,4 +104,4 @@ def validate(root=ROOT):
 
 
 if __name__ == "__main__":
-    print(f"Validated Reah {validate()}: hosted staging configurations, manifests, mirrors, skill links, and tool reference.")
+    print(f"Validated Reah {validate()}: hosted production configurations, manifests, mirrors, skill links, and tool reference.")
